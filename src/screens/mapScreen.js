@@ -6,10 +6,14 @@ import {
   PermissionsAndroid,
   Platform,
   TouchableOpacity,
-  ActivityIndicator,
 } from 'react-native';
 
-import MapView, { Marker } from 'react-native-maps';
+import MapView, {
+  Marker,
+  Polyline,
+  AnimatedRegion,
+} from 'react-native-maps';
+
 import Geolocation from '@react-native-community/geolocation';
 
 const DEFAULT_REGION = {
@@ -22,12 +26,31 @@ const DEFAULT_REGION = {
 const MapScreen = () => {
   const mapRef = useRef(null);
 
-  const [loading, setLoading] = useState(false);
+  // ANIMATED MARKER
+  const animatedCoordinate = useRef(
+    new AnimatedRegion({
+      latitude: DEFAULT_REGION.latitude,
+      longitude: DEFAULT_REGION.longitude,
+      latitudeDelta: 0.01,
+      longitudeDelta: 0.01,
+    }),
+  ).current;
 
+  // TRACKING STATES
   const [mapReady, setMapReady] = useState(false);
 
-  const [currentLocation, setCurrentLocation] = useState(null);
+  const [isTracking, setIsTracking] = useState(false);
 
+  const [currentLocation, setCurrentLocation] =
+    useState(null);
+
+  const [pathCoordinates, setPathCoordinates] =
+    useState([]);
+
+  // WATCHER REF
+  const watchIdRef = useRef(null);
+
+  // GEOLOCATION CONFIG
   useEffect(() => {
     Geolocation.setRNConfiguration({
       skipPermissionRequests: false,
@@ -35,92 +58,240 @@ const MapScreen = () => {
     });
   }, []);
 
+  // CLEANUP ON UNMOUNT
+  useEffect(() => {
+    return () => {
+      if (watchIdRef.current !== null) {
+        Geolocation.clearWatch(
+          watchIdRef.current,
+        );
+
+        console.log(
+          'Watcher cleared on unmount',
+        );
+      }
+    };
+  }, []);
+
+  // DISTANCE CALCULATOR
+  const calculateDistance = (
+    lat1,
+    lon1,
+    lat2,
+    lon2,
+  ) => {
+    const toRad = value =>
+      (value * Math.PI) / 180;
+
+    const R = 6371e3;
+
+    const φ1 = toRad(lat1);
+    const φ2 = toRad(lat2);
+
+    const Δφ = toRad(lat2 - lat1);
+    const Δλ = toRad(lon2 - lon1);
+
+    const a =
+      Math.sin(Δφ / 2) *
+      Math.sin(Δφ / 2) +
+      Math.cos(φ1) *
+      Math.cos(φ2) *
+      Math.sin(Δλ / 2) *
+      Math.sin(Δλ / 2);
+
+    const c =
+      2 *
+      Math.atan2(
+        Math.sqrt(a),
+        Math.sqrt(1 - a),
+      );
+
+    return R * c;
+  };
+
+  // LOCATION PERMISSION
   const requestLocationPermission = async () => {
     try {
       if (Platform.OS === 'android') {
-        const granted = await PermissionsAndroid.request(
-          PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-        );
+        const granted =
+          await PermissionsAndroid.request(
+            PermissionsAndroid.PERMISSIONS
+              .ACCESS_FINE_LOCATION,
+          );
 
-        return granted === PermissionsAndroid.RESULTS.GRANTED;
+        return (
+          granted ===
+          PermissionsAndroid.RESULTS.GRANTED
+        );
       }
 
       return true;
     } catch (error) {
-      console.log('PERMISSION ERROR => ', error);
+      console.log(
+        'PERMISSION ERROR => ',
+        error,
+      );
+
       return false;
     }
   };
 
-  const fetchCurrentLocation = async () => {
+  // START LIVE TRACKING
+  const startLiveTracking = async () => {
     try {
-      if (loading) {
+      if (isTracking) {
+        console.log(
+          'Tracking already running',
+        );
+
         return;
       }
 
-      setLoading(true);
-
-      const hasPermission = await requestLocationPermission();
+      const hasPermission =
+        await requestLocationPermission();
 
       if (!hasPermission) {
-        console.log('Location permission denied');
-        setLoading(false);
+        console.log('Permission denied');
+
         return;
       }
 
-      Geolocation.getCurrentPosition(
-        position => {
-          console.log('POSITION => ', position);
+      setIsTracking(true);
 
-          if (!position?.coords) {
-            console.log('No coordinates found');
-            setLoading(false);
-            return;
-          }
+      const watchId =
+        Geolocation.watchPosition(
+          position => {
+            console.log(
+              'LIVE POSITION => ',
+              position,
+            );
 
-          const latitude = position.coords.latitude;
-          const longitude = position.coords.longitude;
+            if (!position?.coords) {
+              return;
+            }
 
-          console.log('LATITUDE => ', latitude);
-          console.log('LONGITUDE => ', longitude);
+            const latitude =
+              position.coords.latitude;
 
-          const newRegion = {
-            latitude,
-            longitude,
-            latitudeDelta: 0.01,
-            longitudeDelta: 0.01,
-          };
+            const longitude =
+              position.coords.longitude;
 
-          setCurrentLocation({
-            latitude,
-            longitude,
-          });
+            const newCoordinate = {
+              latitude,
+              longitude,
+            };
 
-          if (mapReady && mapRef.current) {
-            setTimeout(() => {
-              mapRef.current.animateToRegion(newRegion, 1000);
-            }, 300);
-          }
+            // ANTI-JITTER PROTECTION
+            if (currentLocation) {
+              const distance =
+                calculateDistance(
+                  currentLocation.latitude,
+                  currentLocation.longitude,
+                  latitude,
+                  longitude,
+                );
 
-          setLoading(false);
-        },
+              // IGNORE VERY SMALL MOVEMENTS
+              if (distance < 3) {
+                return;
+              }
+            }
 
-        error => {
-          console.log('LOCATION ERROR => ', error);
+            // UPDATE CURRENT LOCATION
+            setCurrentLocation(newCoordinate);
 
-          setLoading(false);
-        },
+            // SMOOTH MARKER ANIMATION
+            animatedCoordinate
+              .timing({
+                latitude,
+                longitude,
+                duration: 2000,
+                useNativeDriver: false,
+              })
+              .start();
 
-        {
-          enableHighAccuracy: false,
-          timeout: 15000,
-          maximumAge: 10000,
-        },
+            // UPDATE ROLLING PATH BUFFER
+            setPathCoordinates(prev => {
+              const updated = [
+                ...prev,
+                newCoordinate,
+              ];
+
+              // KEEP ONLY LAST 5 POINTS
+              if (updated.length > 5) {
+                updated.shift();
+              }
+
+              return updated;
+            });
+
+            // CAMERA FOLLOW
+            if (
+              mapReady &&
+              mapRef.current
+            ) {
+              mapRef.current.animateToRegion(
+                {
+                  latitude,
+                  longitude,
+                  latitudeDelta: 0.01,
+                  longitudeDelta: 0.01,
+                },
+                1000,
+              );
+            }
+          },
+
+          error => {
+            console.log(
+              'WATCH ERROR => ',
+              error,
+            );
+          },
+
+          {
+            enableHighAccuracy: false,
+
+            // FOR TESTING PURPOSE
+            distanceFilter: 0,
+            interval: 2000,
+            fastestInterval: 1000,
+          },
+        );
+
+      watchIdRef.current = watchId;
+
+      console.log(
+        'TRACKING STARTED => ',
+        watchId,
       );
     } catch (error) {
-      console.log('FETCH LOCATION ERROR => ', error);
+      console.log(
+        'START TRACKING ERROR => ',
+        error,
+      );
+    }
+  };
 
-      setLoading(false);
+  // STOP LIVE TRACKING
+  const stopLiveTracking = () => {
+    try {
+      if (watchIdRef.current !== null) {
+        Geolocation.clearWatch(
+          watchIdRef.current,
+        );
+
+        watchIdRef.current = null;
+      }
+
+      setIsTracking(false);
+
+      console.log('Tracking stopped');
+    } catch (error) {
+      console.log(
+        'STOP TRACKING ERROR => ',
+        error,
+      );
     }
   };
 
@@ -134,39 +305,77 @@ const MapScreen = () => {
         showsMyLocationButton={true}
         onMapReady={() => {
           console.log('MAP READY');
+
           setMapReady(true);
         }}>
+        {/* ANIMATED RIDER MARKER */}
         {currentLocation && (
-          <Marker
-            coordinate={currentLocation}
-            title="Current Location"
+          <Marker.Animated
+            coordinate={animatedCoordinate}
+            title="Delivery Boy"
+          />
+        )}
+
+        {/* MOVEMENT POLYLINE */}
+        {pathCoordinates.length > 1 && (
+          <Polyline
+            coordinates={pathCoordinates}
+            strokeWidth={5}
+            strokeColor="blue"
           />
         )}
       </MapView>
 
       <View style={styles.bottomContainer}>
+        {/* TRACK BUTTON */}
         <TouchableOpacity
-          style={styles.button}
+          style={[
+            styles.button,
+            {
+              backgroundColor:
+                isTracking
+                  ? 'red'
+                  : 'black',
+            },
+          ]}
           activeOpacity={0.8}
-          disabled={loading}
-          onPress={fetchCurrentLocation}>
-          {loading ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <Text style={styles.buttonText}>
-              Fetch Current Location
-            </Text>
-          )}
+          onPress={
+            isTracking
+              ? stopLiveTracking
+              : startLiveTracking
+          }>
+          <Text style={styles.buttonText}>
+            {isTracking
+              ? 'Stop Tracking'
+              : 'Start Tracking'}
+          </Text>
         </TouchableOpacity>
 
+        {/* COORDINATES */}
         <Text style={styles.coordText}>
           Latitude:{' '}
-          {currentLocation?.latitude ?? 'Not Available'}
+          {currentLocation?.latitude ??
+            'Not Available'}
         </Text>
 
         <Text style={styles.coordText}>
           Longitude:{' '}
-          {currentLocation?.longitude ?? 'Not Available'}
+          {currentLocation?.longitude ??
+            'Not Available'}
+        </Text>
+
+        {/* TRACKING STATUS */}
+        <Text style={styles.statusText}>
+          Tracking Status:{' '}
+          {isTracking
+            ? 'ACTIVE'
+            : 'STOPPED'}
+        </Text>
+
+        {/* PATH COUNT */}
+        <Text style={styles.statusText}>
+          Path Points:{' '}
+          {pathCoordinates.length}
         </Text>
       </View>
     </View>
@@ -190,7 +399,6 @@ const styles = StyleSheet.create({
   },
 
   button: {
-    backgroundColor: '#000',
     paddingVertical: 14,
     borderRadius: 10,
     alignItems: 'center',
@@ -206,7 +414,14 @@ const styles = StyleSheet.create({
 
   coordText: {
     fontSize: 14,
+    marginBottom: 6,
+    color: '#000',
+  },
+
+  statusText: {
+    fontSize: 14,
     marginBottom: 4,
+    fontWeight: '600',
     color: '#000',
   },
 });

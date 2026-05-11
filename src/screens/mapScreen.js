@@ -16,12 +16,41 @@ import MapView, {
 
 import Geolocation from '@react-native-community/geolocation';
 
+import { supabase } from '../services/supabase';
+
 const DEFAULT_REGION = {
   latitude: 23.2599,
   longitude: 77.4126,
   latitudeDelta: 0.05,
   longitudeDelta: 0.05,
 };
+
+const DEMO_ROUTE = [
+  {
+    latitude: 23.2599,
+    longitude: 77.4126,
+  },
+  {
+    latitude: 23.2605,
+    longitude: 77.4135,
+  },
+  {
+    latitude: 23.2612,
+    longitude: 77.4144,
+  },
+  {
+    latitude: 23.2620,
+    longitude: 77.4152,
+  },
+  {
+    latitude: 23.2630,
+    longitude: 77.4160,
+  },
+  {
+    latitude: 23.2640,
+    longitude: 77.4170,
+  },
+];
 
 const MapScreen = () => {
   const mapRef = useRef(null);
@@ -49,6 +78,8 @@ const MapScreen = () => {
 
   // WATCHER REF
   const watchIdRef = useRef(null);
+
+  const simulationRef = useRef(null);
 
   // GEOLOCATION CONFIG
   useEffect(() => {
@@ -86,9 +117,11 @@ const MapScreen = () => {
     const R = 6371e3;
 
     const φ1 = toRad(lat1);
+
     const φ2 = toRad(lat2);
 
     const Δφ = toRad(lat2 - lat1);
+
     const Δλ = toRad(lon2 - lon1);
 
     const a =
@@ -284,12 +317,140 @@ const MapScreen = () => {
         watchIdRef.current = null;
       }
 
+      if (simulationRef.current) {
+        clearInterval(simulationRef.current);
+
+        simulationRef.current = null;
+      }
+
       setIsTracking(false);
 
       console.log('Tracking stopped');
     } catch (error) {
       console.log(
         'STOP TRACKING ERROR => ',
+        error,
+      );
+    }
+  };
+
+  // DEMO TRACKING
+  const startDemoTracking = () => {
+    try {
+      if (isTracking) {
+        return;
+      }
+
+      console.log('DEMO TRACKING STARTED');
+
+      setIsTracking(true);
+
+      let currentIndex = 0;
+
+      simulationRef.current = setInterval(() => {
+        if (
+          currentIndex >= DEMO_ROUTE.length
+        ) {
+          clearInterval(
+            simulationRef.current,
+          );
+
+          simulationRef.current = null;
+
+          setIsTracking(false);
+
+          console.log(
+            'DEMO TRACKING COMPLETED',
+          );
+
+          return;
+        }
+
+        const coordinate =
+          DEMO_ROUTE[currentIndex];
+
+        const latitude =
+          coordinate.latitude;
+
+        const longitude =
+          coordinate.longitude;
+
+        // UPDATE LOCATION
+        setCurrentLocation(coordinate);
+
+        // ANIMATE MARKER
+        animatedCoordinate
+          .timing({
+            latitude,
+            longitude,
+            duration: 2000,
+            useNativeDriver: false,
+          })
+          .start();
+
+        // UPDATE POLYLINE
+        setPathCoordinates(prev => {
+          const updated = [
+            ...prev,
+            coordinate,
+          ];
+
+          if (updated.length > 5) {
+            updated.shift();
+          }
+
+          return updated;
+        });
+
+        // CAMERA FOLLOW
+        if (
+          mapReady &&
+          mapRef.current
+        ) {
+          mapRef.current.animateToRegion(
+            {
+              latitude,
+              longitude,
+              latitudeDelta: 0.01,
+              longitudeDelta: 0.01,
+            },
+            1000,
+          );
+        }
+
+        currentIndex++;
+      }, 2500);
+    } catch (error) {
+      console.log(
+        'DEMO TRACKING ERROR => ',
+        error,
+      );
+    }
+  };
+
+  // TEST SUPABASE
+  const testSupabaseConnection = async () => {
+    try {
+      console.log(
+        'TESTING SUPABASE CONNECTION...',
+      );
+
+      const { data, error } = await supabase
+        .from('tracking')
+        .select('*');
+
+      console.log(
+        'SUPABASE DATA => ',
+        data,
+      );
+
+      console.log(
+        'SUPABASE ERROR => ',
+        error,
+      );
+    } catch (error) {
+      console.log(
+        'SUPABASE TEST ERROR => ',
         error,
       );
     }
@@ -321,13 +482,13 @@ const MapScreen = () => {
           <Polyline
             coordinates={pathCoordinates}
             strokeWidth={5}
-            strokeColor="blue"
+            strokeColor="red"
           />
         )}
       </MapView>
 
       <View style={styles.bottomContainer}>
-        {/* TRACK BUTTON */}
+        {/* LIVE TRACK BUTTON */}
         <TouchableOpacity
           style={[
             styles.button,
@@ -348,6 +509,36 @@ const MapScreen = () => {
             {isTracking
               ? 'Stop Tracking'
               : 'Start Tracking'}
+          </Text>
+        </TouchableOpacity>
+
+        {/* DEMO TRACK BUTTON */}
+        <TouchableOpacity
+          style={[
+            styles.button,
+            {
+              backgroundColor: 'blue',
+            },
+          ]}
+          activeOpacity={0.8}
+          onPress={startDemoTracking}>
+          <Text style={styles.buttonText}>
+            Start Demo Tracking
+          </Text>
+        </TouchableOpacity>
+
+        {/* TEST SUPABASE BUTTON */}
+        <TouchableOpacity
+          style={[
+            styles.button,
+            {
+              backgroundColor: 'green',
+            },
+          ]}
+          activeOpacity={0.8}
+          onPress={testSupabaseConnection}>
+          <Text style={styles.buttonText}>
+            Test Supabase
           </Text>
         </TouchableOpacity>
 

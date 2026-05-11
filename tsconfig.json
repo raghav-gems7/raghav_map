@@ -3,6 +3,6 @@
   "compilerOptions": {
     "types": ["jest"]
   },
-  "include": ["**/*.ts", "**/*.tsx", "src/screens/mapScreen.js"],
+  "include": ["**/*.ts", "**/*.tsx", "src/screens/DeliveryTrackingScreen.js"],
   "exclude": ["**/node_modules", "**/Pods"]
 }

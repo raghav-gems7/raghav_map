@@ -32,12 +32,16 @@ import { calculateDistance } from '../utils/distance';
 
 import { uploadTrackingData } from '../services/trackingService';
 
+import { DEMO_ROUTE } from '../utils/DemoRoute';
+
 const DeliveryTrackingScreen = () => {
   const mapRef = useRef(null);
 
   const uploadIntervalRef = useRef(null);
 
   const watchIdRef = useRef(null);
+
+  const demoIntervalRef = useRef(null);
 
   const animatedCoordinate = useRef(
     new AnimatedRegion({
@@ -88,22 +92,19 @@ const DeliveryTrackingScreen = () => {
     return true;
   };
 
-  const uploadTracking = async () => {
+  const uploadTracking = async (
+    coordinate,
+    updatedPath,
+  ) => {
     try {
-      if (!currentLocation) {
-        return;
-      }
-
       const payload = {
         order_id: TEST_ORDER_ID,
 
-        current_lat:
-          currentLocation.latitude,
+        current_lat: coordinate.latitude,
 
-        current_lng:
-          currentLocation.longitude,
+        current_lng: coordinate.longitude,
 
-        path_json: pathCoordinates,
+        path_json: updatedPath,
 
         updated_at:
           new Date().toISOString(),
@@ -113,139 +114,250 @@ const DeliveryTrackingScreen = () => {
         await uploadTrackingData(payload);
 
       if (error) {
-        console.log(error);
+        console.log(
+          'UPLOAD ERROR => ',
+          error,
+        );
       } else {
         console.log(
           'TRACKING UPLOADED',
         );
       }
     } catch (error) {
-      console.log(error);
+      console.log(
+        'UPLOAD TRACKING ERROR => ',
+        error,
+      );
+    }
+  };
+
+  const updateTrackingState = async (
+    coordinate,
+  ) => {
+    try {
+      const latitude =
+        coordinate.latitude;
+
+      const longitude =
+        coordinate.longitude;
+
+      setCurrentLocation(coordinate);
+
+      animatedCoordinate
+        .timing({
+          latitude,
+          longitude,
+          duration: 2000,
+          useNativeDriver: false,
+        })
+        .start();
+
+      let updatedPath = [];
+
+      setPathCoordinates(prev => {
+        updatedPath = [
+          ...prev,
+          coordinate,
+        ];
+
+        if (
+          updatedPath.length >
+          MAX_PATH_POINTS
+        ) {
+          updatedPath.shift();
+        }
+
+        return updatedPath;
+      });
+
+      if (
+        mapReady &&
+        mapRef.current
+      ) {
+        mapRef.current.animateToRegion(
+          {
+            latitude,
+            longitude,
+            latitudeDelta: 0.01,
+            longitudeDelta: 0.01,
+          },
+          1000,
+        );
+      }
+
+      await uploadTracking(
+        coordinate,
+        updatedPath,
+      );
+    } catch (error) {
+      console.log(
+        'UPDATE TRACKING ERROR => ',
+        error,
+      );
     }
   };
 
   const startTracking = async () => {
-    const granted =
-      await requestPermission();
+    try {
+      if (isTracking) {
+        return;
+      }
 
-    if (!granted) {
-      return;
+      const granted =
+        await requestPermission();
+
+      if (!granted) {
+        return;
+      }
+
+      setIsTracking(true);
+
+      const watchId =
+        Geolocation.watchPosition(
+          async position => {
+            if (!position?.coords) {
+              return;
+            }
+
+            const latitude =
+              position.coords.latitude;
+
+            const longitude =
+              position.coords.longitude;
+
+            const newCoordinate = {
+              latitude,
+              longitude,
+            };
+
+            if (currentLocation) {
+              const distance =
+                calculateDistance(
+                  currentLocation.latitude,
+                  currentLocation.longitude,
+                  latitude,
+                  longitude,
+                );
+
+              if (
+                distance <
+                MIN_DISTANCE_METERS
+              ) {
+                return;
+              }
+            }
+
+            await updateTrackingState(
+              newCoordinate,
+            );
+          },
+
+          error => {
+            console.log(
+              'GPS ERROR => ',
+              error,
+            );
+          },
+
+          {
+            enableHighAccuracy: false,
+            distanceFilter: 0,
+            interval: 2000,
+            fastestInterval: 1000,
+          },
+        );
+
+      watchIdRef.current = watchId;
+    } catch (error) {
+      console.log(
+        'START TRACKING ERROR => ',
+        error,
+      );
     }
+  };
 
-    setIsTracking(true);
+  const startDemoTracking = () => {
+    try {
+      if (isTracking) {
+        return;
+      }
 
-    uploadIntervalRef.current =
-      setInterval(() => {
-        uploadTracking();
-      }, TRACKING_INTERVAL);
+      console.log(
+        'DEMO TRACKING STARTED',
+      );
 
-    const watchId =
-      Geolocation.watchPosition(
-        position => {
-          if (!position?.coords) {
+      setIsTracking(true);
+
+      let currentIndex = 0;
+
+      demoIntervalRef.current =
+        setInterval(async () => {
+          if (
+            currentIndex >=
+            DEMO_ROUTE.length
+          ) {
+            clearInterval(
+              demoIntervalRef.current,
+            );
+
+            demoIntervalRef.current =
+              null;
+
+            setIsTracking(false);
+
+            console.log(
+              'DEMO TRACKING COMPLETED',
+            );
+
             return;
           }
 
-          const latitude =
-            position.coords.latitude;
+          const coordinate =
+            DEMO_ROUTE[currentIndex];
 
-          const longitude =
-            position.coords.longitude;
+          await updateTrackingState(
+            coordinate,
+          );
 
-          const newCoordinate = {
-            latitude,
-            longitude,
-          };
-
-          if (currentLocation) {
-            const distance =
-              calculateDistance(
-                currentLocation.latitude,
-                currentLocation.longitude,
-                latitude,
-                longitude,
-              );
-
-            if (
-              distance <
-              MIN_DISTANCE_METERS
-            ) {
-              return;
-            }
-          }
-
-          setCurrentLocation(newCoordinate);
-
-          animatedCoordinate
-            .timing({
-              latitude,
-              longitude,
-              duration: 2000,
-              useNativeDriver: false,
-            })
-            .start();
-
-          setPathCoordinates(prev => {
-            const updated = [
-              ...prev,
-              newCoordinate,
-            ];
-
-            if (
-              updated.length >
-              MAX_PATH_POINTS
-            ) {
-              updated.shift();
-            }
-
-            return updated;
-          });
-
-          if (
-            mapReady &&
-            mapRef.current
-          ) {
-            mapRef.current.animateToRegion(
-              {
-                latitude,
-                longitude,
-                latitudeDelta: 0.01,
-                longitudeDelta: 0.01,
-              },
-              1000,
-            );
-          }
-        },
-
-        error => {
-          console.log(error);
-        },
-
-        {
-          enableHighAccuracy: false,
-          distanceFilter: 0,
-          interval: 2000,
-          fastestInterval: 1000,
-        },
+          currentIndex++;
+        }, TRACKING_INTERVAL);
+    } catch (error) {
+      console.log(
+        'DEMO TRACKING ERROR => ',
+        error,
       );
-
-    watchIdRef.current = watchId;
+    }
   };
 
   const stopTracking = () => {
-    if (watchIdRef.current !== null) {
-      Geolocation.clearWatch(
-        watchIdRef.current,
+    try {
+      if (watchIdRef.current !== null) {
+        Geolocation.clearWatch(
+          watchIdRef.current,
+        );
+      }
+
+      if (uploadIntervalRef.current) {
+        clearInterval(
+          uploadIntervalRef.current,
+        );
+      }
+
+      if (demoIntervalRef.current) {
+        clearInterval(
+          demoIntervalRef.current,
+        );
+      }
+
+      setIsTracking(false);
+
+      console.log('TRACKING STOPPED');
+    } catch (error) {
+      console.log(
+        'STOP TRACKING ERROR => ',
+        error,
       );
     }
-
-    if (uploadIntervalRef.current) {
-      clearInterval(
-        uploadIntervalRef.current,
-      );
-    }
-
-    setIsTracking(false);
   };
 
   return (
@@ -257,6 +369,14 @@ const DeliveryTrackingScreen = () => {
         }
         pathCoordinates={
           pathCoordinates
+        }
+        fullRouteCoordinates={
+          DEMO_ROUTE
+        }
+        destination={
+          DEMO_ROUTE[
+          DEMO_ROUTE.length - 1
+          ]
         }
         mapReady={mapReady}
         setMapReady={setMapReady}
@@ -271,7 +391,7 @@ const DeliveryTrackingScreen = () => {
           title={
             isTracking
               ? 'Stop Delivery'
-              : 'Start Delivery'
+              : 'Start GPS Tracking'
           }
           color={
             isTracking
@@ -283,6 +403,12 @@ const DeliveryTrackingScreen = () => {
               ? stopTracking
               : startTracking
           }
+        />
+
+        <ModuleButton
+          title="Start Demo Tracking"
+          color="blue"
+          onPress={startDemoTracking}
         />
       </View>
     </View>

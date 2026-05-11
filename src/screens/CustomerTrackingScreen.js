@@ -13,6 +13,7 @@ import {
 import { AnimatedRegion } from 'react-native-maps';
 
 import TrackingMap from '../components/TrackingMap';
+import { DEMO_ROUTE } from '../utils/DemoRoute';
 
 import {
     DEFAULT_REGION,
@@ -119,6 +120,14 @@ const CustomerTrackingScreen = () => {
                 }
                 pathCoordinates={
                     pathCoordinates
+                }
+                fullRouteCoordinates={
+                    DEMO_ROUTE
+                }
+                destination={
+                    DEMO_ROUTE[
+                    DEMO_ROUTE.length - 1
+                    ]
                 }
                 mapReady={mapReady}
                 setMapReady={setMapReady}

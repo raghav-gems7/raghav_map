@@ -2,6 +2,7 @@ import React from 'react';
 
 import {
     Image,
+    View,
     StyleSheet,
 } from 'react-native';
 
@@ -17,61 +18,99 @@ import {
 const TrackingMap = ({
     mapRef,
     animatedCoordinate,
-    pathCoordinates,
-    fullRouteCoordinates,
+    completedPath = [],
+    fullRouteCoordinates = [],
     destination,
     mapReady,
     setMapReady,
 }) => {
+    const remainingRoute =
+        fullRouteCoordinates.slice(
+            completedPath.length > 0
+                ? completedPath.length - 1
+                : 0,
+        );
+
     return (
         <MapView
             ref={mapRef}
             style={styles.map}
-            initialRegion={DEFAULT_REGION}
-            showsUserLocation
-            showsMyLocationButton
+            initialRegion={{
+                latitude:
+                    fullRouteCoordinates?.[0]
+                        ?.latitude ||
+                    DEFAULT_REGION.latitude,
+
+                longitude:
+                    fullRouteCoordinates?.[0]
+                        ?.longitude ||
+                    DEFAULT_REGION.longitude,
+
+                latitudeDelta: 0.05,
+                longitudeDelta: 0.05,
+            }}
             onMapReady={() => {
                 setMapReady(true);
-            }}>
-            {/* FULL ROUTE */}
-            {fullRouteCoordinates.length >
-                1 && (
-                    <Polyline
-                        coordinates={
-                            fullRouteCoordinates
-                        }
-                        strokeWidth={5}
-                        strokeColor="#BDBDBD"
-                    />
-                )}
+            }}
+        >
+            {/* REMAINING ROUTE */}
+            {remainingRoute.length > 1 && (
+                <Polyline
+                    coordinates={remainingRoute}
+                    strokeWidth={5}
+                    strokeColor="#BDBDBD"
+                />
+            )}
 
             {/* COMPLETED ROUTE */}
-            {pathCoordinates.length > 1 && (
+            {completedPath.length > 1 && (
                 <Polyline
-                    coordinates={pathCoordinates}
-                    strokeWidth={5}
+                    coordinates={completedPath}
+                    strokeWidth={6}
                     strokeColor="#1DB954"
                 />
             )}
 
+            {/* STORE */}
+            {fullRouteCoordinates.length >
+                0 && (
+                    <Marker
+                        coordinate={
+                            fullRouteCoordinates[0]
+                        }
+                        anchor={{
+                            x: 0.5,
+                            y: 0.5,
+                        }}
+                    >
+                        <View style={styles.startDot} />
+                    </Marker>
+                )}
+
             {/* DELIVERY BOY */}
             <Marker.Animated
-                coordinate={animatedCoordinate}>
+                coordinate={animatedCoordinate}
+                flat
+                anchor={{
+                    x: 0.5,
+                    y: 0.5,
+                }}
+            >
                 <Image
                     source={require('../assets/bike.png')}
                     style={styles.bikeIcon}
-                    resizeMode="contain"
                 />
             </Marker.Animated>
 
-            {/* DESTINATION */}
-            <Marker coordinate={destination}>
-                <Image
-                    source={require('../assets/home.png')}
-                    style={styles.homeIcon}
-                    resizeMode="contain"
-                />
-            </Marker>
+            {/* CUSTOMER HOME */}
+            {destination && (
+                <Marker coordinate={destination}>
+                    <Image
+                        source={require('../assets/home.png')}
+                        style={styles.homeIcon}
+                    />
+                </Marker>
+            )}
         </MapView>
     );
 };
@@ -84,12 +123,23 @@ const styles = StyleSheet.create({
     },
 
     bikeIcon: {
-        width: 45,
-        height: 45,
+        width: 42,
+        height: 42,
+        resizeMode: 'contain',
     },
 
     homeIcon: {
         width: 38,
         height: 38,
+        resizeMode: 'contain',
+    },
+
+    startDot: {
+        width: 16,
+        height: 16,
+        borderRadius: 8,
+        backgroundColor: '#000',
+        borderWidth: 3,
+        borderColor: '#fff',
     },
 });

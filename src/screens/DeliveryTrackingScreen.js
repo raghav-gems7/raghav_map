@@ -24,7 +24,6 @@ import {
   TEST_ORDER_ID,
   TRACKING_INTERVAL,
   MIN_DISTANCE_METERS,
-  MAX_PATH_POINTS,
   DEFAULT_REGION,
 } from '../utils/constants';
 
@@ -37,16 +36,14 @@ import { DEMO_ROUTE } from '../utils/DemoRoute';
 const DeliveryTrackingScreen = () => {
   const mapRef = useRef(null);
 
-  const uploadIntervalRef = useRef(null);
-
   const watchIdRef = useRef(null);
 
   const demoIntervalRef = useRef(null);
 
   const animatedCoordinate = useRef(
     new AnimatedRegion({
-      latitude: DEFAULT_REGION.latitude,
-      longitude: DEFAULT_REGION.longitude,
+      latitude: DEMO_ROUTE[0].latitude,
+      longitude: DEMO_ROUTE[0].longitude,
       latitudeDelta: 0.01,
       longitudeDelta: 0.01,
     }),
@@ -59,10 +56,35 @@ const DeliveryTrackingScreen = () => {
     useState(false);
 
   const [currentLocation, setCurrentLocation] =
-    useState(null);
+    useState(DEMO_ROUTE[0]);
 
-  const [pathCoordinates, setPathCoordinates] =
-    useState([]);
+  const [completedPath, setCompletedPath] =
+    useState([DEMO_ROUTE[0]]);
+  const [maxReachedRouteIndex, setMaxReachedRouteIndex] =
+    useState(0);
+
+  const travelledPathRef = useRef([DEMO_ROUTE[0]]);
+
+  const findNearestRouteIndex = coordinate => {
+    let nearestIndex = 0;
+    let nearestDistance = Number.POSITIVE_INFINITY;
+
+    DEMO_ROUTE.forEach((routePoint, index) => {
+      const distance = calculateDistance(
+        coordinate.latitude,
+        coordinate.longitude,
+        routePoint.latitude,
+        routePoint.longitude,
+      );
+
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearestIndex = index;
+      }
+    });
+
+    return nearestIndex;
+  };
 
   useEffect(() => {
     Geolocation.setRNConfiguration({
@@ -147,28 +169,39 @@ const DeliveryTrackingScreen = () => {
         .timing({
           latitude,
           longitude,
-          duration: 2000,
+          duration: 4000,
           useNativeDriver: false,
         })
         .start();
 
-      let updatedPath = [];
+      travelledPathRef.current = [
+        ...travelledPathRef.current,
+        coordinate,
+      ];
 
-      setPathCoordinates(prev => {
-        updatedPath = [
-          ...prev,
-          coordinate,
-        ];
+      const nearestRouteIndex =
+        findNearestRouteIndex(coordinate);
 
-        if (
-          updatedPath.length >
-          MAX_PATH_POINTS
-        ) {
-          updatedPath.shift();
-        }
+      const nextMaxReachedRouteIndex = Math.max(
+        maxReachedRouteIndex,
+        nearestRouteIndex,
+      );
 
-        return updatedPath;
-      });
+      if (
+        nextMaxReachedRouteIndex !==
+        maxReachedRouteIndex
+      ) {
+        setMaxReachedRouteIndex(
+          nextMaxReachedRouteIndex,
+        );
+      }
+
+      const updatedPath = DEMO_ROUTE.slice(
+        0,
+        nextMaxReachedRouteIndex + 1,
+      );
+
+      setCompletedPath(updatedPath);
 
       if (
         mapReady &&
@@ -286,9 +319,30 @@ const DeliveryTrackingScreen = () => {
         'DEMO TRACKING STARTED',
       );
 
+      setCompletedPath([
+        DEMO_ROUTE[0],
+      ]);
+      travelledPathRef.current = [DEMO_ROUTE[0]];
+      setMaxReachedRouteIndex(0);
+
+      setCurrentLocation(
+        DEMO_ROUTE[0],
+      );
+
+      animatedCoordinate.setValue({
+        latitude:
+          DEMO_ROUTE[0].latitude,
+
+        longitude:
+          DEMO_ROUTE[0].longitude,
+
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      });
+
       setIsTracking(true);
 
-      let currentIndex = 0;
+      let currentIndex = 1;
 
       demoIntervalRef.current =
         setInterval(async () => {
@@ -337,12 +391,6 @@ const DeliveryTrackingScreen = () => {
         );
       }
 
-      if (uploadIntervalRef.current) {
-        clearInterval(
-          uploadIntervalRef.current,
-        );
-      }
-
       if (demoIntervalRef.current) {
         clearInterval(
           demoIntervalRef.current,
@@ -367,8 +415,8 @@ const DeliveryTrackingScreen = () => {
         animatedCoordinate={
           animatedCoordinate
         }
-        pathCoordinates={
-          pathCoordinates
+        completedPath={
+          completedPath
         }
         fullRouteCoordinates={
           DEMO_ROUTE

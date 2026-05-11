@@ -118,7 +118,7 @@ const CustomerTrackingScreen = () => {
                 animatedCoordinate={
                     animatedCoordinate
                 }
-                pathCoordinates={
+                completedPath={
                     pathCoordinates
                 }
                 fullRouteCoordinates={

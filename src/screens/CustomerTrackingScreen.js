@@ -13,6 +13,7 @@ import {
 import { AnimatedRegion } from 'react-native-maps';
 
 import TrackingMap from '../components/TrackingMap';
+
 import { DEMO_ROUTE } from '../utils/DemoRoute';
 
 import {
@@ -30,8 +31,9 @@ const CustomerTrackingScreen = () => {
 
     const animatedCoordinate = useRef(
         new AnimatedRegion({
-            latitude: DEFAULT_REGION.latitude,
-            longitude: DEFAULT_REGION.longitude,
+            latitude: DEMO_ROUTE[0].latitude,
+            longitude:
+                DEMO_ROUTE[0].longitude,
             latitudeDelta: 0.01,
             longitudeDelta: 0.01,
         }),
@@ -40,19 +42,47 @@ const CustomerTrackingScreen = () => {
     const [mapReady, setMapReady] =
         useState(false);
 
-    const [pathCoordinates, setPathCoordinates] =
+    const [completedPath, setCompletedPath] =
         useState([]);
+
+    const [lastUpdatedTime, setLastUpdatedTime] =
+        useState('');
+
+    const [currentCoords, setCurrentCoords] =
+        useState(null);
 
     const fetchTracking = async () => {
         try {
+            console.log(
+                'CUSTOMER POLLING STARTED',
+            );
+
             const { data, error } =
                 await fetchTrackingData(
                     TEST_ORDER_ID,
                 );
 
-            if (error || !data) {
+            if (error) {
+                console.log(
+                    'CUSTOMER FETCH ERROR => ',
+                    error,
+                );
+
                 return;
             }
+
+            if (!data) {
+                console.log(
+                    'NO TRACKING DATA FOUND',
+                );
+
+                return;
+            }
+
+            console.log(
+                'CUSTOMER TRACKING DATA => ',
+                data,
+            );
 
             const latitude =
                 data.current_lat;
@@ -60,17 +90,29 @@ const CustomerTrackingScreen = () => {
             const longitude =
                 data.current_lng;
 
+            setCurrentCoords({
+                latitude,
+                longitude,
+            });
+
+            setLastUpdatedTime(
+                new Date().toLocaleTimeString(),
+            );
+
             animatedCoordinate
                 .timing({
                     latitude,
                     longitude,
-                    duration: 2000,
+                    duration: 4000,
                     useNativeDriver: false,
                 })
                 .start();
 
-            setPathCoordinates(
-                data.path_json || [],
+            const fetchedPath =
+                data.path_json || [];
+
+            setCompletedPath(
+                fetchedPath,
             );
 
             if (
@@ -88,7 +130,10 @@ const CustomerTrackingScreen = () => {
                 );
             }
         } catch (error) {
-            console.log(error);
+            console.log(
+                'CUSTOMER SCREEN ERROR => ',
+                error,
+            );
         }
     };
 
@@ -119,7 +164,7 @@ const CustomerTrackingScreen = () => {
                     animatedCoordinate
                 }
                 completedPath={
-                    pathCoordinates
+                    completedPath
                 }
                 fullRouteCoordinates={
                     DEMO_ROUTE
@@ -141,6 +186,35 @@ const CustomerTrackingScreen = () => {
                 <Text style={styles.subtitle}>
                     Live delivery tracking
                 </Text>
+
+                <View style={styles.debugBox}>
+                    <Text style={styles.debugText}>
+                        Last Update:
+                        {' '}
+                        {lastUpdatedTime ||
+                            'Waiting...'}
+                    </Text>
+
+                    <Text style={styles.debugText}>
+                        Latitude:
+                        {' '}
+                        {currentCoords?.latitude ||
+                            '---'}
+                    </Text>
+
+                    <Text style={styles.debugText}>
+                        Longitude:
+                        {' '}
+                        {currentCoords?.longitude ||
+                            '---'}
+                    </Text>
+
+                    <Text style={styles.debugText}>
+                        Completed Route Points:
+                        {' '}
+                        {completedPath.length}
+                    </Text>
+                </View>
             </View>
         </View>
     );
@@ -162,5 +236,18 @@ const styles = StyleSheet.create({
     subtitle: {
         marginTop: 4,
         color: '#666',
+        marginBottom: 10,
+    },
+
+    debugBox: {
+        backgroundColor: '#F5F5F5',
+        padding: 10,
+        borderRadius: 8,
+    },
+
+    debugText: {
+        fontSize: 13,
+        marginBottom: 4,
+        color: '#000',
     },
 });

@@ -86,15 +86,22 @@ const DeliveryTrackingScreen = () => {
     return nearestIndex;
   };
 
+  // useEffect(() => {
+  //   Geolocation.setRNConfiguration({
+  //     skipPermissionRequests: false,
+  //     authorizationLevel: 'whenInUse',
+  //   });
+
+  //   return () => {
+  //     stopTracking();
+  //   };
+  // }, []);
+
   useEffect(() => {
     Geolocation.setRNConfiguration({
       skipPermissionRequests: false,
       authorizationLevel: 'whenInUse',
     });
-
-    return () => {
-      stopTracking();
-    };
   }, []);
 
   const requestPermission = async () => {

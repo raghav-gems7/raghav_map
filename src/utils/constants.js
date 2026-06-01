@@ -1,18 +1,15 @@
-export const TEST_ORDER_ID =
-    'ORDER_1001';
+export const TRACKING_INTERVAL = 5000;
 
-export const TRACKING_INTERVAL =
-    5000;
+export const BG_TRACKING_INTERVAL = 20000;
 
-export const MIN_DISTANCE_METERS = 3;
+export const MIN_DISTANCE_METERS = 10;
 
-export const MAX_PATH_POINTS = 5;
+export const STALE_LOCATION_THRESHOLD_MS = 30000;
 
-export const DESTINATION = {
-    latitude: 22.700025,
-    longitude: 75.836209,
+export const AVG_DELIVERY_SPEED_KMH = 20;
 
-};
+export const OSRM_BASE_URL =
+    'https://router.project-osrm.org/route/v1/driving';
 
 export const DEFAULT_REGION = {
     latitude: 22.6883883,

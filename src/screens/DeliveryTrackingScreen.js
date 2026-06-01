@@ -10,6 +10,7 @@ import {
   StyleSheet,
   PermissionsAndroid,
   Platform,
+  ActivityIndicator,
 } from 'react-native';
 
 import Geolocation from '@react-native-community/geolocation';
@@ -21,19 +22,27 @@ import TrackingMap from '../components/TrackingMap';
 import ModuleButton from '../components/ModuleButton';
 
 import {
-  TEST_ORDER_ID,
   TRACKING_INTERVAL,
-  MIN_DISTANCE_METERS,
   DEFAULT_REGION,
 } from '../utils/constants';
 
-import { calculateDistance } from '../utils/distance';
+import {
+  uploadTrackingData,
+} from '../services/trackingService';
 
-import { uploadTrackingData } from '../services/trackingService';
+import {
+  getCurrentLocation,
+} from '../services/deliveryService';
 
-import { DEMO_ROUTE } from '../utils/DemoRoute';
+import {
+  getRouteCoordinates,
+} from '../services/googleMapService';
 
-const DeliveryTrackingScreen = () => {
+const DeliveryTrackingScreen = ({
+  route,
+}) => {
+  const { order } = route.params;
+
   const mapRef = useRef(null);
 
   const watchIdRef = useRef(null);
@@ -42,12 +51,19 @@ const DeliveryTrackingScreen = () => {
 
   const animatedCoordinate = useRef(
     new AnimatedRegion({
-      latitude: DEMO_ROUTE[0].latitude,
-      longitude: DEMO_ROUTE[0].longitude,
+      latitude:
+        DEFAULT_REGION.latitude,
+
+      longitude:
+        DEFAULT_REGION.longitude,
+
       latitudeDelta: 0.01,
       longitudeDelta: 0.01,
     }),
   ).current;
+
+  const [loading, setLoading] =
+    useState(true);
 
   const [mapReady, setMapReady] =
     useState(false);
@@ -55,53 +71,23 @@ const DeliveryTrackingScreen = () => {
   const [isTracking, setIsTracking] =
     useState(false);
 
-  const [currentLocation, setCurrentLocation] =
-    useState(DEMO_ROUTE[0]);
+  const [fullRoute, setFullRoute] =
+    useState([]);
 
-  const [completedPath, setCompletedPath] =
-    useState([DEMO_ROUTE[0]]);
-  const [maxReachedRouteIndex, setMaxReachedRouteIndex] =
-    useState(0);
+  const [completedPath,
+    setCompletedPath,
+  ] = useState([]);
 
-  const travelledPathRef = useRef([DEMO_ROUTE[0]]);
-
-  const findNearestRouteIndex = coordinate => {
-    let nearestIndex = 0;
-    let nearestDistance = Number.POSITIVE_INFINITY;
-
-    DEMO_ROUTE.forEach((routePoint, index) => {
-      const distance = calculateDistance(
-        coordinate.latitude,
-        coordinate.longitude,
-        routePoint.latitude,
-        routePoint.longitude,
-      );
-
-      if (distance < nearestDistance) {
-        nearestDistance = distance;
-        nearestIndex = index;
-      }
-    });
-
-    return nearestIndex;
-  };
-
-  // useEffect(() => {
-  //   Geolocation.setRNConfiguration({
-  //     skipPermissionRequests: false,
-  //     authorizationLevel: 'whenInUse',
-  //   });
-
-  //   return () => {
-  //     stopTracking();
-  //   };
-  // }, []);
+  const [currentLocation,
+    setCurrentLocation,
+  ] = useState(null);
 
   useEffect(() => {
-    Geolocation.setRNConfiguration({
-      skipPermissionRequests: false,
-      authorizationLevel: 'whenInUse',
-    });
+    initializeTracking();
+
+    return () => {
+      stopTracking();
+    };
   }, []);
 
   const requestPermission = async () => {
@@ -114,306 +100,309 @@ const DeliveryTrackingScreen = () => {
 
       return (
         granted ===
-        PermissionsAndroid.RESULTS.GRANTED
+        PermissionsAndroid.RESULTS
+          .GRANTED
       );
     }
 
     return true;
   };
 
-  const uploadTracking = async (
-    coordinate,
-    updatedPath,
-  ) => {
-    try {
-      const payload = {
-        order_id: TEST_ORDER_ID,
+  const initializeTracking =
+    async () => {
+      try {
+        setLoading(true);
 
-        current_lat: coordinate.latitude,
+        const granted =
+          await requestPermission();
 
-        current_lng: coordinate.longitude,
+        if (!granted) {
+          setLoading(false);
+          return;
+        }
 
-        path_json: updatedPath,
+        const origin =
+          await getCurrentLocation();
 
-        updated_at:
-          new Date().toISOString(),
-      };
+        setCurrentLocation(origin);
 
-      const { error } =
-        await uploadTrackingData(payload);
+        animatedCoordinate.setValue({
+          latitude:
+            origin.latitude,
 
-      if (error) {
-        console.log(
-          'UPLOAD ERROR => ',
-          error,
+          longitude:
+            origin.longitude,
+
+          latitudeDelta: 0.01,
+          longitudeDelta: 0.01,
+        });
+
+        const destination = {
+          latitude:
+            order.destination_lat,
+
+          longitude:
+            order.destination_lng,
+        };
+
+        const routeCoordinates =
+          await getRouteCoordinates(
+            origin,
+            destination,
+          );
+
+        setFullRoute(
+          routeCoordinates,
         );
-      } else {
-        console.log(
-          'TRACKING UPLOADED',
+
+        setCompletedPath([
+          origin,
+        ]);
+
+        await uploadTrackingData({
+          order_id: order.id,
+
+          current_lat:
+            origin.latitude,
+
+          current_lng:
+            origin.longitude,
+
+          destination_lat:
+            destination.latitude,
+
+          destination_lng:
+            destination.longitude,
+
+          full_route:
+            routeCoordinates,
+
+          completed_path: [
+            origin,
+          ],
+
+          updated_at:
+            new Date().toISOString(),
+        });
+
+        setLoading(false);
+      } catch (error) {
+        console.log(error);
+
+        setLoading(false);
+      }
+    };
+
+  const uploadTracking =
+    async coordinate => {
+      try {
+        const updatedPath = [
+          ...completedPath,
+          coordinate,
+        ];
+
+        setCompletedPath(
+          updatedPath,
         );
+
+        await uploadTrackingData({
+          order_id: order.id,
+
+          current_lat:
+            coordinate.latitude,
+
+          current_lng:
+            coordinate.longitude,
+
+          destination_lat:
+            order.destination_lat,
+
+          destination_lng:
+            order.destination_lng,
+
+          full_route:
+            fullRoute,
+
+          completed_path:
+            updatedPath,
+
+          updated_at:
+            new Date().toISOString(),
+        });
+      } catch (error) {
+        console.log(error);
       }
-    } catch (error) {
-      console.log(
-        'UPLOAD TRACKING ERROR => ',
-        error,
-      );
-    }
-  };
+    };
 
-  const updateTrackingState = async (
-    coordinate,
-  ) => {
-    try {
-      const latitude =
-        coordinate.latitude;
+  const startTracking =
+    async () => {
+      try {
+        if (isTracking) {
+          return;
+        }
 
-      const longitude =
-        coordinate.longitude;
+        setIsTracking(true);
 
-      setCurrentLocation(coordinate);
+        const watchId =
+          Geolocation.watchPosition(
+            async position => {
+              const latitude =
+                position.coords
+                  .latitude;
 
-      animatedCoordinate
-        .timing({
-          latitude,
-          longitude,
-          duration: 4000,
-          useNativeDriver: false,
-        })
-        .start();
+              const longitude =
+                position.coords
+                  .longitude;
 
-      travelledPathRef.current = [
-        ...travelledPathRef.current,
-        coordinate,
-      ];
+              const coordinate = {
+                latitude,
+                longitude,
+              };
 
-      const nearestRouteIndex =
-        findNearestRouteIndex(coordinate);
+              setCurrentLocation(
+                coordinate,
+              );
 
-      const nextMaxReachedRouteIndex = Math.max(
-        maxReachedRouteIndex,
-        nearestRouteIndex,
-      );
+              animatedCoordinate
+                .timing({
+                  latitude,
+                  longitude,
+                  duration: 4000,
+                  useNativeDriver:
+                    false,
+                })
+                .start();
 
-      if (
-        nextMaxReachedRouteIndex !==
-        maxReachedRouteIndex
-      ) {
-        setMaxReachedRouteIndex(
-          nextMaxReachedRouteIndex,
-        );
+              await uploadTracking(
+                coordinate,
+              );
+
+              if (
+                mapReady &&
+                mapRef.current
+              ) {
+                mapRef.current.animateToRegion(
+                  {
+                    latitude,
+                    longitude,
+                    latitudeDelta: 0.01,
+                    longitudeDelta: 0.01,
+                  },
+                  1000,
+                );
+              }
+            },
+
+            error => {
+              console.log(error);
+            },
+
+            {
+              enableHighAccuracy:
+                true,
+              distanceFilter: 5,
+              interval:
+                TRACKING_INTERVAL,
+              fastestInterval: 3000,
+            },
+          );
+
+        watchIdRef.current =
+          watchId;
+      } catch (error) {
+        console.log(error);
       }
+    };
 
-      const updatedPath = DEMO_ROUTE.slice(
-        0,
-        nextMaxReachedRouteIndex + 1,
-      );
+  const startDemoTracking =
+    async () => {
+      try {
+        if (isTracking) {
+          return;
+        }
 
-      setCompletedPath(updatedPath);
+        setIsTracking(true);
 
-      if (
-        mapReady &&
-        mapRef.current
-      ) {
-        mapRef.current.animateToRegion(
-          {
-            latitude,
-            longitude,
-            latitudeDelta: 0.01,
-            longitudeDelta: 0.01,
-          },
-          1000,
-        );
-      }
+        let currentIndex = 0;
 
-      await uploadTracking(
-        coordinate,
-        updatedPath,
-      );
-    } catch (error) {
-      console.log(
-        'UPDATE TRACKING ERROR => ',
-        error,
-      );
-    }
-  };
+        demoIntervalRef.current =
+          setInterval(async () => {
+            if (
+              currentIndex >=
+              fullRoute.length
+            ) {
+              clearInterval(
+                demoIntervalRef.current,
+              );
 
-  const startTracking = async () => {
-    try {
-      if (isTracking) {
-        return;
-      }
+              setIsTracking(false);
 
-      const granted =
-        await requestPermission();
-
-      if (!granted) {
-        return;
-      }
-
-      setIsTracking(true);
-
-      const watchId =
-        Geolocation.watchPosition(
-          async position => {
-            if (!position?.coords) {
               return;
             }
 
-            const latitude =
-              position.coords.latitude;
+            const coordinate =
+              fullRoute[currentIndex];
 
-            const longitude =
-              position.coords.longitude;
+            animatedCoordinate
+              .timing({
+                latitude:
+                  coordinate.latitude,
 
-            const newCoordinate = {
-              latitude,
-              longitude,
-            };
+                longitude:
+                  coordinate.longitude,
 
-            if (currentLocation) {
-              const distance =
-                calculateDistance(
-                  currentLocation.latitude,
-                  currentLocation.longitude,
-                  latitude,
-                  longitude,
-                );
+                duration: 4000,
 
-              if (
-                distance <
-                MIN_DISTANCE_METERS
-              ) {
-                return;
-              }
-            }
+                useNativeDriver:
+                  false,
+              })
+              .start();
 
-            await updateTrackingState(
-              newCoordinate,
+            setCurrentLocation(
+              coordinate,
             );
-          },
 
-          error => {
-            console.log(
-              'GPS ERROR => ',
-              error,
+            await uploadTracking(
+              coordinate,
             );
-          },
 
-          {
-            enableHighAccuracy: false,
-            distanceFilter: 0,
-            interval: 2000,
-            fastestInterval: 1000,
-          },
-        );
-
-      watchIdRef.current = watchId;
-    } catch (error) {
-      console.log(
-        'START TRACKING ERROR => ',
-        error,
-      );
-    }
-  };
-
-  const startDemoTracking = () => {
-    try {
-      if (isTracking) {
-        return;
+            currentIndex++;
+          }, TRACKING_INTERVAL);
+      } catch (error) {
+        console.log(error);
       }
-
-      console.log(
-        'DEMO TRACKING STARTED',
-      );
-
-      setCompletedPath([
-        DEMO_ROUTE[0],
-      ]);
-      travelledPathRef.current = [DEMO_ROUTE[0]];
-      setMaxReachedRouteIndex(0);
-
-      setCurrentLocation(
-        DEMO_ROUTE[0],
-      );
-
-      animatedCoordinate.setValue({
-        latitude:
-          DEMO_ROUTE[0].latitude,
-
-        longitude:
-          DEMO_ROUTE[0].longitude,
-
-        latitudeDelta: 0.01,
-        longitudeDelta: 0.01,
-      });
-
-      setIsTracking(true);
-
-      let currentIndex = 1;
-
-      demoIntervalRef.current =
-        setInterval(async () => {
-          if (
-            currentIndex >=
-            DEMO_ROUTE.length
-          ) {
-            clearInterval(
-              demoIntervalRef.current,
-            );
-
-            demoIntervalRef.current =
-              null;
-
-            setIsTracking(false);
-
-            console.log(
-              'DEMO TRACKING COMPLETED',
-            );
-
-            return;
-          }
-
-          const coordinate =
-            DEMO_ROUTE[currentIndex];
-
-          await updateTrackingState(
-            coordinate,
-          );
-
-          currentIndex++;
-        }, TRACKING_INTERVAL);
-    } catch (error) {
-      console.log(
-        'DEMO TRACKING ERROR => ',
-        error,
-      );
-    }
-  };
+    };
 
   const stopTracking = () => {
-    try {
-      if (watchIdRef.current !== null) {
-        Geolocation.clearWatch(
-          watchIdRef.current,
-        );
-      }
-
-      if (demoIntervalRef.current) {
-        clearInterval(
-          demoIntervalRef.current,
-        );
-      }
-
-      setIsTracking(false);
-
-      console.log('TRACKING STOPPED');
-    } catch (error) {
-      console.log(
-        'STOP TRACKING ERROR => ',
-        error,
+    if (watchIdRef.current) {
+      Geolocation.clearWatch(
+        watchIdRef.current,
       );
     }
+
+    if (demoIntervalRef.current) {
+      clearInterval(
+        demoIntervalRef.current,
+      );
+    }
+
+    setIsTracking(false);
   };
+
+  if (loading) {
+    return (
+      <View style={styles.loader}>
+        <ActivityIndicator
+          size="large"
+          color="#111111"
+        />
+
+        <Text style={styles.loaderText}>
+          Preparing Route...
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <View style={{ flex: 1 }}>
@@ -426,20 +415,30 @@ const DeliveryTrackingScreen = () => {
           completedPath
         }
         fullRouteCoordinates={
-          DEMO_ROUTE
+          fullRoute
         }
-        destination={
-          DEMO_ROUTE[
-          DEMO_ROUTE.length - 1
-          ]
-        }
+        destination={{
+          latitude:
+            order.destination_lat,
+
+          longitude:
+            order.destination_lng,
+        }}
         mapReady={mapReady}
         setMapReady={setMapReady}
       />
 
       <View style={styles.bottom}>
-        <Text style={styles.title}>
-          Delivery Boy Module
+        <Text style={styles.orderId}>
+          #{order.order_number}
+        </Text>
+
+        <Text style={styles.customer}>
+          {order.customer_name}
+        </Text>
+
+        <Text style={styles.address}>
+          {order.customer_address}
         </Text>
 
         <ModuleButton
@@ -462,8 +461,10 @@ const DeliveryTrackingScreen = () => {
 
         <ModuleButton
           title="Start Demo Tracking"
-          color="blue"
-          onPress={startDemoTracking}
+          color="#2563EB"
+          onPress={
+            startDemoTracking
+          }
         />
       </View>
     </View>
@@ -473,14 +474,38 @@ const DeliveryTrackingScreen = () => {
 export default DeliveryTrackingScreen;
 
 const styles = StyleSheet.create({
-  bottom: {
-    padding: 16,
-    backgroundColor: '#fff',
+  loader: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 
-  title: {
-    fontSize: 18,
+  loaderText: {
+    marginTop: 20,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+
+  bottom: {
+    backgroundColor: '#FFFFFF',
+    padding: 20,
+  },
+
+  orderId: {
+    fontSize: 20,
     fontWeight: '700',
-    marginBottom: 10,
+    color: '#111111',
+  },
+
+  customer: {
+    marginTop: 10,
+    fontSize: 18,
+    fontWeight: '600',
+  },
+
+  address: {
+    marginTop: 8,
+    color: '#666666',
+    marginBottom: 20,
   },
 });

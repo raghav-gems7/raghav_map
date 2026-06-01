@@ -1,19 +1,7 @@
 import React from 'react';
-
-import {
-    Image,
-    View,
-    StyleSheet,
-} from 'react-native';
-
-import MapView, {
-    Marker,
-    Polyline,
-} from 'react-native-maps';
-
-import {
-    DEFAULT_REGION,
-} from '../utils/constants';
+import { Image, View, StyleSheet } from 'react-native';
+import MapView, { Marker, Polyline } from 'react-native-maps';
+import { DEFAULT_REGION } from '../utils/constants';
 
 const TrackingMap = ({
     mapRef,
@@ -21,39 +9,28 @@ const TrackingMap = ({
     completedPath = [],
     fullRouteCoordinates = [],
     destination,
-    mapReady,
     setMapReady,
 }) => {
-    const remainingRoute =
-        fullRouteCoordinates.slice(
-            completedPath.length > 0
-                ? completedPath.length - 1
-                : 0,
-        );
+    // Slice remaining route from the last completed point onward.
+    // Guard against empty completedPath to avoid negative index.
+    const sliceFrom = completedPath.length > 1 ? completedPath.length - 1 : 0;
+    const remainingRoute = fullRouteCoordinates.slice(sliceFrom);
+
+    const initialRegion = {
+        latitude: fullRouteCoordinates[0]?.latitude ?? DEFAULT_REGION.latitude,
+        longitude: fullRouteCoordinates[0]?.longitude ?? DEFAULT_REGION.longitude,
+        latitudeDelta: 0.05,
+        longitudeDelta: 0.05,
+    };
 
     return (
         <MapView
             ref={mapRef}
             style={styles.map}
-            initialRegion={{
-                latitude:
-                    fullRouteCoordinates?.[0]
-                        ?.latitude ||
-                    DEFAULT_REGION.latitude,
-
-                longitude:
-                    fullRouteCoordinates?.[0]
-                        ?.longitude ||
-                    DEFAULT_REGION.longitude,
-
-                latitudeDelta: 0.05,
-                longitudeDelta: 0.05,
-            }}
-            onMapReady={() => {
-                setMapReady(true);
-            }}
+            initialRegion={initialRegion}
+            onMapReady={() => setMapReady(true)}
         >
-            {/* REMAINING ROUTE */}
+            {/* Remaining (predicted) route — grey */}
             {remainingRoute.length > 1 && (
                 <Polyline
                     coordinates={remainingRoute}
@@ -62,7 +39,7 @@ const TrackingMap = ({
                 />
             )}
 
-            {/* COMPLETED ROUTE */}
+            {/* Completed path — green */}
             {completedPath.length > 1 && (
                 <Polyline
                     coordinates={completedPath}
@@ -71,30 +48,21 @@ const TrackingMap = ({
                 />
             )}
 
-            {/* STORE */}
-            {fullRouteCoordinates.length >
-                0 && (
-                    <Marker
-                        coordinate={
-                            fullRouteCoordinates[0]
-                        }
-                        anchor={{
-                            x: 0.5,
-                            y: 0.5,
-                        }}
-                    >
-                        <View style={styles.startDot} />
-                    </Marker>
-                )}
+            {/* Origin dot (store/start) */}
+            {fullRouteCoordinates.length > 0 && (
+                <Marker
+                    coordinate={fullRouteCoordinates[0]}
+                    anchor={{ x: 0.5, y: 0.5 }}
+                >
+                    <View style={styles.startDot} />
+                </Marker>
+            )}
 
-            {/* DELIVERY BOY */}
+            {/* Animated delivery boy marker */}
             <Marker.Animated
                 coordinate={animatedCoordinate}
                 flat
-                anchor={{
-                    x: 0.5,
-                    y: 0.5,
-                }}
+                anchor={{ x: 0.5, y: 0.5 }}
             >
                 <Image
                     source={require('../assets/bike.png')}
@@ -102,7 +70,7 @@ const TrackingMap = ({
                 />
             </Marker.Animated>
 
-            {/* CUSTOMER HOME */}
+            {/* Customer home marker */}
             {destination && (
                 <Marker coordinate={destination}>
                     <Image
@@ -121,25 +89,22 @@ const styles = StyleSheet.create({
     map: {
         flex: 1,
     },
-
     bikeIcon: {
         width: 42,
         height: 42,
         resizeMode: 'contain',
     },
-
     homeIcon: {
         width: 38,
         height: 38,
         resizeMode: 'contain',
     },
-
     startDot: {
         width: 16,
         height: 16,
         borderRadius: 8,
-        backgroundColor: '#000',
+        backgroundColor: '#000000',
         borderWidth: 3,
-        borderColor: '#fff',
+        borderColor: '#FFFFFF',
     },
 });

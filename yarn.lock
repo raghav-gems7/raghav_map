@@ -2942,6 +2942,7 @@ __metadata:
     react: "npm:19.2.3"
     react-native: "npm:0.85.3"
     react-native-background-actions: "npm:^4.1.0"
+    react-native-config: "npm:^1.6.1"
     react-native-maps: "npm:^1.27.2"
     react-native-permissions: "npm:^5.5.1"
     react-native-safe-area-context: "npm:^5.7.0"
@@ -7756,6 +7757,20 @@ __metadata:
   peerDependencies:
     react-native: ">=0.47.0"
   checksum: 10c0/92e3c5413747892aaaa123a05ef876643184dda2973965917ceba65a57848143c3668095ebd82cfb3d0d6b8810c9a503ff00a98d008d2edf64006ff809e93dbc
+  languageName: node
+  linkType: hard
+
+"react-native-config@npm:^1.6.1":
+  version: 1.6.1
+  resolution: "react-native-config@npm:1.6.1"
+  peerDependencies:
+    react: "*"
+    react-native: "*"
+    react-native-windows: ">=0.61"
+  peerDependenciesMeta:
+    react-native-windows:
+      optional: true
+  checksum: 10c0/9e2bbb7fb04bac878471f7b06132d84233c482952fc7dd0b651669a62cd35c35428302c7502a92898402505ec9b8d7997848122356b42de5c072dcce549d5813
   languageName: node
   linkType: hard
 

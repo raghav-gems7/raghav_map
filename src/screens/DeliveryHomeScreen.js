@@ -23,121 +23,135 @@ import {
     isBackgroundTrackingRunning,
 } from '../services/backgroundLocationTask';
 
-// Hardcoded for demo — replace with auth session in production
-const DEMO_DELIVERY_BOY_ID = 'delivery-boy-1';
-const DEMO_DELIVERY_BOY_NAME = 'Rahul Sharma';
+const DeliveryHomeScreen = ({ route }) => {
+    const deliveryBoyId = route?.params?.deliveryBoyId || 'delivery-boy-1';
+    const deliveryBoyName = route?.params?.deliveryBoyName || 'Rahul Sharma';
 
-const DeliveryHomeScreen = () => {
     const [isOnline, setIsOnline] = useState(false);
     const [loading, setLoading] = useState(true);
     const [toggling, setToggling] = useState(false);
     const [deliveries, setDeliveries] = useState([]);
-    const [sessionId, setSessionId] = useState(null);
     const [markingId, setMarkingId] = useState(null);
+    const [error, setError] = useState(null);
 
     const sessionIdRef = useRef(null);
 
     useEffect(() => {
-        checkRunningState();
+        setIsOnline(isBackgroundTrackingRunning());
         loadDeliveries();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
-
-    const checkRunningState = async () => {
-        const running = isBackgroundTrackingRunning();
-        setIsOnline(running);
-    };
 
     const loadDeliveries = async () => {
         setLoading(true);
-        const { data, sessionId: sid } =
-            await fetchSessionDeliveries(DEMO_DELIVERY_BOY_ID);
-        setDeliveries(data);
-        if (sid) {
-            setSessionId(sid);
-            sessionIdRef.current = sid;
+        setError(null);
+        try {
+            const { data, sessionId: sid, error: fetchError } =
+                await fetchSessionDeliveries(deliveryBoyId);
+            if (fetchError) throw fetchError;
+            setDeliveries(data || []);
+            if (sid) sessionIdRef.current = sid;
+        } catch (e) {
+            setError('Could not load deliveries. Check your connection.');
+        } finally {
+            setLoading(false);
         }
-        setLoading(false);
     };
 
     const requestLocationPermission = async () => {
-        if (Platform.OS === 'android') {
-            const fine = await PermissionsAndroid.request(
-                PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+        if (Platform.OS !== 'android') return true;
+        const fine = await PermissionsAndroid.request(
+            PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+        );
+        if (fine !== PermissionsAndroid.RESULTS.GRANTED) return false;
+        // ACCESS_BACKGROUND_LOCATION must be requested separately after fine location
+        const bg = await PermissionsAndroid.request(
+            PermissionsAndroid.PERMISSIONS.ACCESS_BACKGROUND_LOCATION,
+        );
+        return bg === PermissionsAndroid.RESULTS.GRANTED;
+    };
+
+    const goOnline = async () => {
+        const granted = await requestLocationPermission();
+        if (!granted) {
+            Alert.alert(
+                'Permission Required',
+                'Please allow "Allow all the time" location access in Settings so your location can be shared with customers while delivering.',
+                [{ text: 'OK' }],
             );
-            const bg = await PermissionsAndroid.request(
-                PermissionsAndroid.PERMISSIONS.ACCESS_BACKGROUND_LOCATION,
-            );
-            return (
-                fine === PermissionsAndroid.RESULTS.GRANTED &&
-                bg === PermissionsAndroid.RESULTS.GRANTED
-            );
+            return;
         }
-        return true;
+
+        // Reuse existing active session; create one only if none exists
+        if (!sessionIdRef.current) {
+            const { data: session, error: sessionError } =
+                await startDeliverySession(deliveryBoyId);
+            if (sessionError || !session) {
+                Alert.alert('Error', 'Could not start delivery session. Try again.');
+                return;
+            }
+            sessionIdRef.current = session.id;
+        }
+
+        await startBackgroundTracking(deliveryBoyId);
+        setIsOnline(true);
+        await loadDeliveries();
+    };
+
+    const goOffline = async () => {
+        await stopBackgroundTracking(deliveryBoyId);
+        if (sessionIdRef.current) {
+            await endDeliverySession(sessionIdRef.current);
+            sessionIdRef.current = null;
+        }
+        setIsOnline(false);
     };
 
     const handleToggle = async value => {
         if (toggling) return;
         setToggling(true);
-
         try {
             if (value) {
-                const granted = await requestLocationPermission();
-                if (!granted) {
-                    Alert.alert(
-                        'Permission Required',
-                        'Background location permission is needed to share your live location.',
-                    );
-                    setToggling(false);
-                    return;
-                }
-
-                const { data: session } = await startDeliverySession(
-                    DEMO_DELIVERY_BOY_ID,
-                );
-                if (session) {
-                    setSessionId(session.id);
-                    sessionIdRef.current = session.id;
-                }
-
-                await startBackgroundTracking(DEMO_DELIVERY_BOY_ID);
-                setIsOnline(true);
-                await loadDeliveries();
+                await goOnline();
             } else {
                 Alert.alert(
                     'Go Offline',
                     'Stop sharing your location? Customers will no longer see you.',
                     [
-                        { text: 'Cancel', style: 'cancel', onPress: () => setToggling(false) },
+                        { text: 'Cancel', style: 'cancel' },
                         {
                             text: 'Go Offline',
                             style: 'destructive',
                             onPress: async () => {
-                                await stopBackgroundTracking(DEMO_DELIVERY_BOY_ID);
-                                if (sessionIdRef.current) {
-                                    await endDeliverySession(sessionIdRef.current);
-                                    setSessionId(null);
-                                    sessionIdRef.current = null;
-                                }
-                                setIsOnline(false);
+                                setToggling(true);
+                                await goOffline();
                                 setToggling(false);
                             },
                         },
                     ],
                 );
+                // return early — toggling is reset in onPress callbacks above
+                setToggling(false);
                 return;
             }
-        } catch (error) {
-            console.log('TOGGLE ERROR =>', error);
+        } catch (e) {
+            console.log('TOGGLE ERROR =>', e);
+            Alert.alert('Error', 'Something went wrong. Please try again.');
         }
-
         setToggling(false);
     };
 
     const handleMarkDelivered = async item => {
         setMarkingId(item.id);
-        await markDelivered(item.id);
-        await loadDeliveries();
-        setMarkingId(null);
+        try {
+            const { error: markError } = await markDelivered(item.id);
+            if (markError) throw markError;
+            await loadDeliveries();
+        } catch (e) {
+            Alert.alert('Error', 'Could not mark as delivered. Try again.');
+        } finally {
+            setMarkingId(null);
+        }
     };
 
     const delivered = deliveries.filter(d => d.status === 'delivered').length;
@@ -146,6 +160,7 @@ const DeliveryHomeScreen = () => {
     const renderItem = ({ item }) => {
         const customer = item.dairy_customers;
         const isDone = item.status === 'delivered';
+        const isMarking = markingId === item.id;
 
         return (
             <View style={[styles.card, isDone && styles.cardDone]}>
@@ -165,11 +180,11 @@ const DeliveryHomeScreen = () => {
                         </View>
                     ) : (
                         <TouchableOpacity
-                            style={styles.deliverBtn}
+                            style={[styles.deliverBtn, isMarking && styles.deliverBtnDisabled]}
                             onPress={() => handleMarkDelivered(item)}
-                            disabled={markingId === item.id}
+                            disabled={isMarking}
                         >
-                            {markingId === item.id ? (
+                            {isMarking ? (
                                 <ActivityIndicator size="small" color="#fff" />
                             ) : (
                                 <Text style={styles.deliverBtnText}>Delivered</Text>
@@ -186,13 +201,13 @@ const DeliveryHomeScreen = () => {
             {/* Header */}
             <View style={styles.header}>
                 <View>
-                    <Text style={styles.name}>{DEMO_DELIVERY_BOY_NAME}</Text>
+                    <Text style={styles.name}>{deliveryBoyName}</Text>
                     <Text style={styles.role}>Delivery Boy</Text>
                 </View>
                 <View style={styles.toggleRow}>
-                    {toggling ? (
-                        <ActivityIndicator size="small" color="#111" style={{ marginRight: 10 }} />
-                    ) : null}
+                    {toggling && (
+                        <ActivityIndicator size="small" color="#111" style={styles.toggleSpinner} />
+                    )}
                     <Text style={[styles.onlineLabel, isOnline && styles.onlineLabelActive]}>
                         {isOnline ? 'Online' : 'Offline'}
                     </Text>
@@ -218,16 +233,19 @@ const DeliveryHomeScreen = () => {
 
             {/* Progress */}
             <View style={styles.progressRow}>
-                <Text style={styles.progressText}>
-                    Today's Deliveries
-                </Text>
-                <Text style={styles.progressCount}>
-                    {delivered} / {total}
-                </Text>
+                <Text style={styles.progressText}>Today's Deliveries</Text>
+                <Text style={styles.progressCount}>{delivered} / {total}</Text>
             </View>
 
             {loading ? (
                 <ActivityIndicator size="large" color="#111" style={{ marginTop: 40 }} />
+            ) : error ? (
+                <View style={styles.emptyState}>
+                    <Text style={styles.errorText}>{error}</Text>
+                    <TouchableOpacity style={styles.retryBtn} onPress={loadDeliveries}>
+                        <Text style={styles.retryText}>Retry</Text>
+                    </TouchableOpacity>
+                </View>
             ) : total === 0 ? (
                 <View style={styles.emptyState}>
                     <Text style={styles.emptyText}>
@@ -277,11 +295,13 @@ const styles = StyleSheet.create({
         alignItems: 'center',
         gap: 8,
     },
+    toggleSpinner: {
+        marginRight: 8,
+    },
     onlineLabel: {
         fontSize: 14,
         fontWeight: '600',
         color: '#999999',
-        marginRight: 4,
     },
     onlineLabelActive: {
         color: '#1DB954',
@@ -331,7 +351,7 @@ const styles = StyleSheet.create({
         borderColor: '#EEEEEE',
     },
     cardDone: {
-        opacity: 0.6,
+        opacity: 0.55,
     },
     cardRow: {
         flexDirection: 'row',
@@ -373,6 +393,9 @@ const styles = StyleSheet.create({
         minWidth: 80,
         alignItems: 'center',
     },
+    deliverBtnDisabled: {
+        backgroundColor: '#888888',
+    },
     deliverBtnText: {
         color: '#FFFFFF',
         fontSize: 12,
@@ -400,5 +423,22 @@ const styles = StyleSheet.create({
         color: '#888888',
         fontSize: 15,
         lineHeight: 22,
+    },
+    errorText: {
+        textAlign: 'center',
+        color: '#E53935',
+        fontSize: 15,
+        lineHeight: 22,
+        marginBottom: 16,
+    },
+    retryBtn: {
+        backgroundColor: '#111111',
+        paddingHorizontal: 24,
+        paddingVertical: 12,
+        borderRadius: 12,
+    },
+    retryText: {
+        color: '#FFFFFF',
+        fontWeight: '700',
     },
 });

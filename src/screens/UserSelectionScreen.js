@@ -6,7 +6,7 @@ const ROLES = [
         name: 'Rahul Sharma',
         role: 'Delivery Boy',
         screen: 'DeliveryHomeScreen',
-        params: { deliveryUserId: 'delivery-boy-1' },
+        params: { deliveryBoyId: 'delivery-boy-1', deliveryBoyName: 'Rahul Sharma' },
         color: '#111111',
         emoji: '🛵',
     },
@@ -19,12 +19,20 @@ const ROLES = [
         emoji: '🏠',
     },
     {
-        name: 'Operations Admin',
-        role: 'Dairy Owner',
+        name: 'Ramesh Dairy (Owner)',
+        role: 'Dairy Owner — Monitor',
         screen: 'DairyOwnerMapScreen',
         params: {},
         color: '#7C3AED',
         emoji: '🗺️',
+    },
+    {
+        name: 'Ramesh Dairy (Owner)',
+        role: 'Dairy Owner — Self Delivery',
+        screen: 'DeliveryHomeScreen',
+        params: { deliveryBoyId: 'dairy-owner-1', deliveryBoyName: 'Ramesh (Owner)' },
+        color: '#059669',
+        emoji: '🧑‍🌾',
     },
 ];
 

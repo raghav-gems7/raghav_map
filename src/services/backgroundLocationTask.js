@@ -7,11 +7,13 @@ import { calculateDistance } from '../utils/distance';
 let lastUploadedLat = null;
 let lastUploadedLng = null;
 
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
 const getCurrentPosition = () =>
     new Promise((resolve, reject) => {
         Geolocation.getCurrentPosition(
-            position => resolve(position),
-            error => reject(error),
+            pos => resolve(pos),
+            err => reject(err),
             { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 },
         );
     });
@@ -32,8 +34,8 @@ const uploadLocation = async (deliveryBoyId, lat, lng) => {
     }
 };
 
-// The task function must be an infinite loop that exits only when
-// BackgroundActions.stop() is called (the library resolves the outer promise)
+// The task runs as a while-loop. BackgroundActions.stop() sets isRunning() to false,
+// which causes the loop to exit naturally after the current sleep completes.
 const locationTask = async taskData => {
     const { deliveryBoyId } = taskData;
 
@@ -42,26 +44,26 @@ const locationTask = async taskData => {
             const position = await getCurrentPosition();
             const { latitude, longitude } = position.coords;
 
-            const shouldUpload =
+            const moved =
                 lastUploadedLat === null ||
-                calculateDistance(
-                    lastUploadedLat,
-                    lastUploadedLng,
-                    latitude,
-                    longitude,
-                ) >= MIN_DISTANCE_METERS;
+                calculateDistance(lastUploadedLat, lastUploadedLng, latitude, longitude) >=
+                    MIN_DISTANCE_METERS;
 
-            if (shouldUpload) {
+            if (moved) {
                 lastUploadedLat = latitude;
                 lastUploadedLng = longitude;
                 await uploadLocation(deliveryBoyId, latitude, longitude);
             }
-        } catch (error) {
-            console.log('BG GPS ERROR =>', error);
+        } catch (err) {
+            // GPS error — log and continue; don't crash the task
+            console.log('BG GPS ERROR =>', err?.message || err);
         }
 
-        // Wait before next poll
-        await new Promise(r => setTimeout(r, BG_TRACKING_INTERVAL));
+        // Sleep between polls. If stop() was called during GPS fetch,
+        // isRunning() is already false here and the loop exits without sleeping.
+        if (BackgroundActions.isRunning()) {
+            await sleep(BG_TRACKING_INTERVAL);
+        }
     }
 };
 
@@ -69,19 +71,16 @@ const bgOptions = {
     taskName: 'DairyDeliveryTracking',
     taskTitle: 'Delivery Active',
     taskDesc: 'Sharing your location with customers',
-    taskIcon: {
-        name: 'ic_launcher',
-        type: 'mipmap',
-    },
+    taskIcon: { name: 'ic_launcher', type: 'mipmap' },
     color: '#111111',
     linkingURI: 'dairyapp://home',
     foregroundServiceType: ['location'],
 };
 
 export const startBackgroundTracking = async deliveryBoyId => {
+    // Reset distance filter state on each new session
     lastUploadedLat = null;
     lastUploadedLng = null;
-
     await BackgroundActions.start(locationTask, {
         ...bgOptions,
         parameters: { deliveryBoyId },
@@ -90,7 +89,6 @@ export const startBackgroundTracking = async deliveryBoyId => {
 
 export const stopBackgroundTracking = async deliveryBoyId => {
     await BackgroundActions.stop();
-
     lastUploadedLat = null;
     lastUploadedLng = null;
 
@@ -104,5 +102,4 @@ export const stopBackgroundTracking = async deliveryBoyId => {
     }
 };
 
-export const isBackgroundTrackingRunning = () =>
-    BackgroundActions.isRunning();
+export const isBackgroundTrackingRunning = () => BackgroundActions.isRunning();

@@ -4,23 +4,26 @@ import {
     Text,
     StyleSheet,
     ActivityIndicator,
+    TouchableOpacity,
 } from 'react-native';
 import { AnimatedRegion } from 'react-native-maps';
 import TrackingMap from '../components/TrackingMap';
 import ETABadge from '../components/ETABadge';
-import { TRACKING_INTERVAL, DEFAULT_REGION, STALE_LOCATION_THRESHOLD_MS } from '../utils/constants';
+import {
+    TRACKING_INTERVAL,
+    DEFAULT_REGION,
+    STALE_LOCATION_THRESHOLD_MS,
+} from '../utils/constants';
 import { fetchTrackingData } from '../services/trackingService';
 
 const CustomerTrackingScreen = ({ route }) => {
     const { order } = route.params;
-
-    // isV2 controls whether we show the predicted full route (true)
-    // or just the actual breadcrumb trail (false)
     const isV2 = order.is_v2 === true;
 
     const mapRef = useRef(null);
     const pollingRef = useRef(null);
-    const lastSeenRef = useRef(null);
+    // Use ref for mapReady so the polling closure always reads the latest value
+    const mapReadyRef = useRef(false);
 
     const animatedCoordinate = useRef(
         new AnimatedRegion({
@@ -31,68 +34,56 @@ const CustomerTrackingScreen = ({ route }) => {
         }),
     ).current;
 
-    const [mapReady, setMapReady] = useState(false);
     const [completedPath, setCompletedPath] = useState([]);
     const [fullRoute, setFullRoute] = useState([]);
     const [currentCoords, setCurrentCoords] = useState(null);
     const [isStale, setIsStale] = useState(false);
     const [lastUpdated, setLastUpdated] = useState(null);
+    const [error, setError] = useState(null);
 
     const fetchTracking = async () => {
         try {
-            const { data } = await fetchTrackingData(order.id);
+            const { data, error: fetchError } = await fetchTrackingData(order.id);
+            if (fetchError) throw fetchError;
             if (!data) return;
 
-            const latitude = data.current_lat;
-            const longitude = data.current_lng;
-            const updatedAt = new Date(data.updated_at);
+            const { current_lat: latitude, current_lng: longitude, updated_at } = data;
+            const updatedAt = new Date(updated_at);
 
-            lastSeenRef.current = updatedAt;
             setLastUpdated(updatedAt);
-            setIsStale(
-                Date.now() - updatedAt.getTime() > STALE_LOCATION_THRESHOLD_MS,
-            );
-
+            setIsStale(Date.now() - updatedAt.getTime() > STALE_LOCATION_THRESHOLD_MS);
             setCurrentCoords({ latitude, longitude });
             setCompletedPath(data.completed_path || []);
-
-            // isV2: show full predicted route; isV1: full_route is empty, only trail shown
             setFullRoute(isV2 ? (data.full_route || []) : []);
+            setError(null);
 
             animatedCoordinate
-                .timing({
-                    latitude,
-                    longitude,
-                    duration: 4000,
-                    useNativeDriver: false,
-                })
+                .timing({ latitude, longitude, duration: 4000, useNativeDriver: false })
                 .start();
 
-            if (mapReady && mapRef.current) {
+            // Use ref — not state — so closure always has the current value
+            if (mapReadyRef.current && mapRef.current) {
                 mapRef.current.animateToRegion(
-                    {
-                        latitude,
-                        longitude,
-                        latitudeDelta: 0.01,
-                        longitudeDelta: 0.01,
-                    },
+                    { latitude, longitude, latitudeDelta: 0.01, longitudeDelta: 0.01 },
                     1000,
                 );
             }
-        } catch (error) {
-            console.log('CUSTOMER FETCH ERROR =>', error);
+        } catch (e) {
+            console.log('CUSTOMER FETCH ERROR =>', e);
+            setError('Could not fetch tracking data.');
         }
     };
 
     useEffect(() => {
         fetchTracking();
-
         pollingRef.current = setInterval(fetchTracking, TRACKING_INTERVAL);
-
-        return () => {
-            if (pollingRef.current) clearInterval(pollingRef.current);
-        };
+        return () => clearInterval(pollingRef.current);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    const handleMapReady = () => {
+        mapReadyRef.current = true;
+    };
 
     const formatLastUpdated = () => {
         if (!lastUpdated) return '';
@@ -102,7 +93,7 @@ const CustomerTrackingScreen = ({ route }) => {
     };
 
     return (
-        <View style={{ flex: 1 }}>
+        <View style={styles.container}>
             <TrackingMap
                 mapRef={mapRef}
                 animatedCoordinate={animatedCoordinate}
@@ -112,8 +103,8 @@ const CustomerTrackingScreen = ({ route }) => {
                     latitude: order.destination_lat,
                     longitude: order.destination_lng,
                 }}
-                mapReady={mapReady}
-                setMapReady={setMapReady}
+                mapReady={mapReadyRef.current}
+                setMapReady={handleMapReady}
             />
 
             <View style={styles.bottom}>
@@ -121,20 +112,23 @@ const CustomerTrackingScreen = ({ route }) => {
                     <View>
                         <Text style={styles.title}>Live Delivery Tracking</Text>
                         <Text style={styles.subtitle}>
-                            {isStale
-                                ? 'Locating delivery boy...'
-                                : 'Rider is on the way'}
+                            {isStale ? 'Locating delivery boy...' : 'Rider is on the way'}
                         </Text>
                     </View>
-                    {isStale && (
-                        <ActivityIndicator size="small" color="#FF8C00" />
-                    )}
+                    {isStale && <ActivityIndicator size="small" color="#FF8C00" />}
                 </View>
 
-                {isStale ? (
+                {error ? (
+                    <View style={styles.staleBadge}>
+                        <Text style={styles.staleText}>{error}</Text>
+                        <TouchableOpacity onPress={fetchTracking}>
+                            <Text style={styles.retryText}>Tap to retry</Text>
+                        </TouchableOpacity>
+                    </View>
+                ) : isStale ? (
                     <View style={styles.staleBadge}>
                         <Text style={styles.staleText}>
-                            Location unavailable — last seen {formatLastUpdated()}
+                            Location unavailable — {formatLastUpdated()}
                         </Text>
                     </View>
                 ) : (
@@ -161,6 +155,9 @@ const CustomerTrackingScreen = ({ route }) => {
 export default CustomerTrackingScreen;
 
 const styles = StyleSheet.create({
+    container: {
+        flex: 1,
+    },
     bottom: {
         padding: 20,
         backgroundColor: '#FFFFFF',
@@ -190,6 +187,12 @@ const styles = StyleSheet.create({
         color: '#FF8C00',
         fontSize: 13,
         fontWeight: '500',
+    },
+    retryText: {
+        color: '#FF8C00',
+        fontSize: 12,
+        marginTop: 4,
+        textDecorationLine: 'underline',
     },
     lastUpdated: {
         marginTop: 10,

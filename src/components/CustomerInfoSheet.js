@@ -21,15 +21,9 @@ const STATUS_COLOR = {
     skipped: '#E53935',
 };
 
-const CustomerInfoSheet = ({
-    customer,
-    riderLocation,
-    visible,
-    onClose,
-}) => {
-    if (!customer) return null;
-
-    const status = customer.deliveryStatus || 'pending';
+const CustomerInfoSheet = ({ customer, riderLocation, visible, onClose }) => {
+    // Always render Modal so it can animate out — guard content inside
+    const status = customer?.deliveryStatus || 'pending';
     const statusColor = STATUS_COLOR[status] || STATUS_COLOR.pending;
 
     return (
@@ -43,28 +37,34 @@ const CustomerInfoSheet = ({
             <View style={styles.sheet}>
                 <View style={styles.handle} />
 
-                <View style={styles.row}>
-                    <View>
-                        <Text style={styles.customerName}>{customer.name}</Text>
-                        <Text style={styles.customerId}>ID: {customer.id?.slice(0, 8)}</Text>
-                    </View>
-                    <View style={[styles.statusBadge, { backgroundColor: statusColor }]}>
-                        <Text style={styles.statusText}>
-                            {STATUS_LABEL[status] || status}
-                        </Text>
-                    </View>
-                </View>
+                {customer ? (
+                    <>
+                        <View style={styles.row}>
+                            <View style={styles.nameBlock}>
+                                <Text style={styles.customerName}>{customer.name}</Text>
+                                <Text style={styles.customerId}>
+                                    ID: {customer.id?.slice(0, 8).toUpperCase()}
+                                </Text>
+                            </View>
+                            <View style={[styles.statusBadge, { backgroundColor: statusColor }]}>
+                                <Text style={styles.statusText}>
+                                    {STATUS_LABEL[status] || status}
+                                </Text>
+                            </View>
+                        </View>
 
-                <Text style={styles.address}>{customer.address}</Text>
+                        <Text style={styles.address}>{customer.address}</Text>
 
-                {riderLocation && status === 'pending' && (
-                    <ETABadge
-                        riderLat={riderLocation.lat}
-                        riderLng={riderLocation.lng}
-                        destLat={customer.lat}
-                        destLng={customer.lng}
-                    />
-                )}
+                        {riderLocation && status === 'pending' && (
+                            <ETABadge
+                                riderLat={riderLocation.lat}
+                                riderLng={riderLocation.lng}
+                                destLat={customer.lat}
+                                destLng={customer.lng}
+                            />
+                        )}
+                    </>
+                ) : null}
 
                 <TouchableOpacity style={styles.closeBtn} onPress={onClose}>
                     <Text style={styles.closeBtnText}>Close</Text>
@@ -100,6 +100,10 @@ const styles = StyleSheet.create({
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'flex-start',
+    },
+    nameBlock: {
+        flex: 1,
+        marginRight: 12,
     },
     customerName: {
         fontSize: 20,

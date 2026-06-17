@@ -14,16 +14,19 @@ import {
     DEFAULT_REGION,
     STALE_LOCATION_THRESHOLD_MS,
 } from '../utils/constants';
-import { fetchTrackingData } from '../services/trackingService';
+import {
+    fetchRiderIdForOrder,
+    fetchDeliveryBoyLocation,
+} from '../services/trackingService';
 
 const CustomerTrackingScreen = ({ route }) => {
     const { order } = route.params;
-    const isV2 = order.is_v2 === true;
 
     const mapRef = useRef(null);
     const pollingRef = useRef(null);
-    // Use ref for mapReady so the polling closure always reads the latest value
     const mapReadyRef = useRef(false);
+    // Cache the resolved rider ID so we don't re-query the FK chain on every poll
+    const riderIdRef = useRef(null);
 
     const animatedCoordinate = useRef(
         new AnimatedRegion({
@@ -34,34 +37,57 @@ const CustomerTrackingScreen = ({ route }) => {
         }),
     ).current;
 
-    const [completedPath, setCompletedPath] = useState([]);
-    const [fullRoute, setFullRoute] = useState([]);
     const [currentCoords, setCurrentCoords] = useState(null);
     const [isStale, setIsStale] = useState(false);
     const [lastUpdated, setLastUpdated] = useState(null);
     const [error, setError] = useState(null);
+    const [riderOffline, setRiderOffline] = useState(false);
 
-    const fetchTracking = async () => {
+    // Resolve rider ID once from the order FK chain, then poll location directly
+    const resolveRiderAndFetch = async () => {
         try {
-            const { data, error: fetchError } = await fetchTrackingData(order.id);
+            if (!riderIdRef.current) {
+                const { data: riderId, error: resolveError } =
+                    await fetchRiderIdForOrder(order.id);
+                if (resolveError) throw resolveError;
+                if (!riderId) {
+                    setError('No delivery boy assigned to this order yet.');
+                    return;
+                }
+                riderIdRef.current = riderId;
+            }
+            await fetchLocation();
+        } catch (e) {
+            console.log('CUSTOMER RESOLVE ERROR =>', e);
+            setError('Could not load tracking data.');
+        }
+    };
+
+    const fetchLocation = async () => {
+        try {
+            const { data, error: fetchError } =
+                await fetchDeliveryBoyLocation(riderIdRef.current);
             if (fetchError) throw fetchError;
             if (!data) return;
 
-            const { current_lat: latitude, current_lng: longitude, updated_at } = data;
-            const updatedAt = new Date(updated_at);
+            const { current_lat: latitude, current_lng: longitude, last_seen_at, is_online } = data;
 
+            if (!latitude || !longitude) {
+                setRiderOffline(true);
+                return;
+            }
+
+            const updatedAt = new Date(last_seen_at);
             setLastUpdated(updatedAt);
             setIsStale(Date.now() - updatedAt.getTime() > STALE_LOCATION_THRESHOLD_MS);
+            setRiderOffline(!is_online);
             setCurrentCoords({ latitude, longitude });
-            setCompletedPath(data.completed_path || []);
-            setFullRoute(isV2 ? (data.full_route || []) : []);
             setError(null);
 
             animatedCoordinate
                 .timing({ latitude, longitude, duration: 4000, useNativeDriver: false })
                 .start();
 
-            // Use ref — not state — so closure always has the current value
             if (mapReadyRef.current && mapRef.current) {
                 mapRef.current.animateToRegion(
                     { latitude, longitude, latitudeDelta: 0.01, longitudeDelta: 0.01 },
@@ -70,13 +96,13 @@ const CustomerTrackingScreen = ({ route }) => {
             }
         } catch (e) {
             console.log('CUSTOMER FETCH ERROR =>', e);
-            setError('Could not fetch tracking data.');
+            setError('Could not fetch rider location.');
         }
     };
 
     useEffect(() => {
-        fetchTracking();
-        pollingRef.current = setInterval(fetchTracking, TRACKING_INTERVAL);
+        resolveRiderAndFetch();
+        pollingRef.current = setInterval(fetchLocation, TRACKING_INTERVAL);
         return () => clearInterval(pollingRef.current);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
@@ -92,13 +118,19 @@ const CustomerTrackingScreen = ({ route }) => {
         return `Updated ${Math.round(seconds / 60)}m ago`;
     };
 
+    const statusText = () => {
+        if (riderOffline) return 'Delivery boy is offline';
+        if (isStale) return 'Locating delivery boy...';
+        return 'Rider is on the way';
+    };
+
     return (
         <View style={styles.container}>
             <TrackingMap
                 mapRef={mapRef}
                 animatedCoordinate={animatedCoordinate}
-                completedPath={completedPath}
-                fullRouteCoordinates={isV2 ? fullRoute : []}
+                completedPath={[]}
+                fullRouteCoordinates={[]}
                 destination={{
                     latitude: order.destination_lat,
                     longitude: order.destination_lng,
@@ -111,19 +143,25 @@ const CustomerTrackingScreen = ({ route }) => {
                 <View style={styles.row}>
                     <View>
                         <Text style={styles.title}>Live Delivery Tracking</Text>
-                        <Text style={styles.subtitle}>
-                            {isStale ? 'Locating delivery boy...' : 'Rider is on the way'}
-                        </Text>
+                        <Text style={styles.subtitle}>{statusText()}</Text>
                     </View>
-                    {isStale && <ActivityIndicator size="small" color="#FF8C00" />}
+                    {isStale && !riderOffline && (
+                        <ActivityIndicator size="small" color="#FF8C00" />
+                    )}
                 </View>
 
                 {error ? (
-                    <View style={styles.staleBadge}>
-                        <Text style={styles.staleText}>{error}</Text>
-                        <TouchableOpacity onPress={fetchTracking}>
+                    <View style={styles.alertBadge}>
+                        <Text style={styles.alertText}>{error}</Text>
+                        <TouchableOpacity onPress={resolveRiderAndFetch}>
                             <Text style={styles.retryText}>Tap to retry</Text>
                         </TouchableOpacity>
+                    </View>
+                ) : riderOffline ? (
+                    <View style={styles.alertBadge}>
+                        <Text style={styles.alertText}>
+                            Rider is offline — location unavailable
+                        </Text>
                     </View>
                 ) : isStale ? (
                     <View style={styles.staleBadge}>
@@ -141,12 +179,6 @@ const CustomerTrackingScreen = ({ route }) => {
                 )}
 
                 <Text style={styles.lastUpdated}>{formatLastUpdated()}</Text>
-
-                {isV2 && (
-                    <View style={styles.v2Badge}>
-                        <Text style={styles.v2Text}>Route Preview On</Text>
-                    </View>
-                )}
             </View>
         </View>
     );
@@ -188,8 +220,19 @@ const styles = StyleSheet.create({
         fontSize: 13,
         fontWeight: '500',
     },
+    alertBadge: {
+        backgroundColor: '#FFEBEE',
+        borderRadius: 10,
+        padding: 10,
+        marginTop: 12,
+    },
+    alertText: {
+        color: '#E53935',
+        fontSize: 13,
+        fontWeight: '500',
+    },
     retryText: {
-        color: '#FF8C00',
+        color: '#E53935',
         fontSize: 12,
         marginTop: 4,
         textDecorationLine: 'underline',
@@ -198,18 +241,5 @@ const styles = StyleSheet.create({
         marginTop: 10,
         color: '#AAAAAA',
         fontSize: 12,
-    },
-    v2Badge: {
-        marginTop: 10,
-        backgroundColor: '#EEF2FF',
-        borderRadius: 8,
-        paddingHorizontal: 10,
-        paddingVertical: 5,
-        alignSelf: 'flex-start',
-    },
-    v2Text: {
-        color: '#4F46E5',
-        fontSize: 12,
-        fontWeight: '600',
     },
 });

@@ -1,5 +1,29 @@
 import { supabase } from './supabase';
 
+export const fetchAllDeliveryBoys = async () => {
+    try {
+        const { data, error } = await supabase
+            .from('delivery_boys')
+            .select('id, name, phone')
+            .order('name', { ascending: true });
+        return { data: data || [], error };
+    } catch (error) {
+        return { data: [], error };
+    }
+};
+
+export const fetchAllCustomers = async () => {
+    try {
+        const { data, error } = await supabase
+            .from('dairy_customers')
+            .select('id, name, address, delivery_boy_id')
+            .order('name', { ascending: true });
+        return { data: data || [], error };
+    } catch (error) {
+        return { data: [], error };
+    }
+};
+
 export const uploadTrackingData = async payload => {
     try {
         const { data, error } = await supabase
@@ -134,6 +158,37 @@ export const startDeliverySession = async deliveryBoyId => {
             .select()
             .single();
         return { data, error };
+    } catch (error) {
+        return { data: null, error };
+    }
+};
+
+// Fetches rider's current position directly from delivery_boys.
+// Used by CustomerTrackingScreen — single source of truth for live location.
+export const fetchDeliveryBoyLocation = async deliveryBoyId => {
+    try {
+        const { data, error } = await supabase
+            .from('delivery_boys')
+            .select('current_lat, current_lng, last_seen_at, is_online, name')
+            .eq('id', deliveryBoyId)
+            .maybeSingle();
+        return { data, error };
+    } catch (error) {
+        return { data: null, error };
+    }
+};
+
+// Resolves rider ID for a given order via:
+//   orders.dairy_customer_id → dairy_customers.delivery_boy_id
+export const fetchRiderIdForOrder = async orderId => {
+    try {
+        const { data, error } = await supabase
+            .from('orders')
+            .select('dairy_customer_id, dairy_customers(delivery_boy_id)')
+            .eq('id', orderId)
+            .maybeSingle();
+        const deliveryBoyId = data?.dairy_customers?.delivery_boy_id ?? null;
+        return { data: deliveryBoyId, error };
     } catch (error) {
         return { data: null, error };
     }

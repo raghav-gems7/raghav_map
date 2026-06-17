@@ -1,4 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import {
     View,
     Text,
@@ -23,9 +24,9 @@ import {
     isBackgroundTrackingRunning,
 } from '../services/backgroundLocationTask';
 
-const DeliveryHomeScreen = ({ route }) => {
-    const deliveryBoyId = route?.params?.deliveryBoyId || 'delivery-boy-1';
-    const deliveryBoyName = route?.params?.deliveryBoyName || 'Rahul Sharma';
+const DeliveryHomeScreen = ({ route, navigation }) => {
+    const deliveryBoyId = route?.params?.deliveryBoyId;
+    const deliveryBoyName = route?.params?.deliveryBoyName || '';
 
     const [isOnline, setIsOnline] = useState(false);
     const [loading, setLoading] = useState(true);
@@ -38,9 +39,15 @@ const DeliveryHomeScreen = ({ route }) => {
 
     useEffect(() => {
         setIsOnline(isBackgroundTrackingRunning());
-        loadDeliveries();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    // Reload list every time screen comes into focus — covers return from DeliveryMapScreen
+    useFocusEffect(
+        useCallback(() => {
+            loadDeliveries();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        }, []),
+    );
 
     const loadDeliveries = async () => {
         setLoading(true);
@@ -231,6 +238,21 @@ const DeliveryHomeScreen = ({ route }) => {
                 </View>
             )}
 
+            {/* Mark Delivery by Maps — only when online and stops exist */}
+            {isOnline && total > 0 && (
+                <TouchableOpacity
+                    style={styles.mapBtn}
+                    onPress={() =>
+                        navigation.navigate('DeliveryMapScreen', {
+                            deliveries,
+                            deliveryBoyId,
+                        })
+                    }
+                >
+                    <Text style={styles.mapBtnText}>Mark Delivery by Maps</Text>
+                </TouchableOpacity>
+            )}
+
             {/* Progress */}
             <View style={styles.progressRow}>
                 <Text style={styles.progressText}>Today's Deliveries</Text>
@@ -325,6 +347,18 @@ const styles = StyleSheet.create({
         color: '#1DB954',
         fontWeight: '600',
         fontSize: 13,
+    },
+    mapBtn: {
+        backgroundColor: '#2563EB',
+        borderRadius: 14,
+        padding: 14,
+        alignItems: 'center',
+        marginBottom: 16,
+    },
+    mapBtnText: {
+        color: '#FFFFFF',
+        fontWeight: '700',
+        fontSize: 15,
     },
     progressRow: {
         flexDirection: 'row',

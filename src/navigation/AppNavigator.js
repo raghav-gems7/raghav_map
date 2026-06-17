@@ -7,6 +7,7 @@ import DeliveryHomeScreen from '../screens/DeliveryHomeScreen';
 import CustomerHomeScreen from '../screens/CustomerHomeScreen';
 import CustomerTrackingScreen from '../screens/CustomerTrackingScreen';
 import DairyOwnerMapScreen from '../screens/DairyOwnerMapScreen';
+import DeliveryMapScreen from '../screens/DeliveryMapScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -45,6 +46,11 @@ const AppNavigator = () => {
                     name="DairyOwnerMapScreen"
                     component={DairyOwnerMapScreen}
                     options={{ title: 'Live Operations' }}
+                />
+                <Stack.Screen
+                    name="DeliveryMapScreen"
+                    component={DeliveryMapScreen}
+                    options={{ title: 'Delivery Map' }}
                 />
             </Stack.Navigator>
         </NavigationContainer>

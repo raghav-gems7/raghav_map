@@ -10,7 +10,9 @@ import {
 import OrderCard from '../components/OrderCard';
 import { getCustomerOrders } from '../services/orderService';
 
-const CustomerHomeScreen = ({ navigation }) => {
+const CustomerHomeScreen = ({ route, navigation }) => {
+    const customerId = route?.params?.customerId || null;
+
     const [orders, setOrders] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
@@ -19,7 +21,7 @@ const CustomerHomeScreen = ({ navigation }) => {
         setLoading(true);
         setError(null);
         try {
-            const { data, error: fetchError } = await getCustomerOrders();
+            const { data, error: fetchError } = await getCustomerOrders(customerId);
             if (fetchError) throw fetchError;
             setOrders(data || []);
         } catch (e) {

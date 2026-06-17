@@ -1,58 +1,51 @@
 import polyline from '@mapbox/polyline';
+import Config from 'react-native-config';
 
-const GOOGLE_MAPS_API_KEY =
-    'AIzaSyBrn_C_3hwbKWumZnWY3Bkh--xNgydqN-Q';
+const FETCH_TIMEOUT_MS = 10000;
 
-export const getRouteCoordinates = async (
-    origin,
-    destination,
-) => {
+export const getRouteCoordinates = async (origin, destination) => {
     try {
-        console.log(
-            'FETCHING GOOGLE ROUTE...',
-        );
-
         const url =
-            `https://maps.googleapis.com/maps/api/directions/json?origin=${origin.latitude},${origin.longitude}&destination=${destination.latitude},${destination.longitude}&key=${GOOGLE_MAPS_API_KEY}`;
+            `https://maps.googleapis.com/maps/api/directions/json` +
+            `?origin=${origin.latitude},${origin.longitude}` +
+            `&destination=${destination.latitude},${destination.longitude}` +
+            `&key=${Config.GOOGLE_MAPS_API_KEY}`;
 
-        const response = await fetch(url);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
 
-        const data = await response.json();
+        let response;
+        try {
+            response = await fetch(url, { signal: controller.signal });
+        } finally {
+            clearTimeout(timeoutId);
+        }
 
-        if (
-            !data.routes ||
-            data.routes.length === 0
-        ) {
-            console.log('NO ROUTES FOUND');
-
+        if (!response.ok) {
+            console.log('GOOGLE DIRECTIONS HTTP ERROR =>', response.status);
             return [];
         }
 
-        const points =
-            data.routes[0].overview_polyline
-                .points;
+        const data = await response.json();
 
-        const decodedPoints =
-            polyline.decode(points);
+        if (!data.routes?.length) {
+            console.log('GOOGLE DIRECTIONS: no routes found');
+            return [];
+        }
 
-        const coordinates =
-            decodedPoints.map(point => ({
-                latitude: point[0],
-                longitude: point[1],
-            }));
-
-        console.log(
-            'ROUTE COORDINATES => ',
-            coordinates.length,
+        const decodedPoints = polyline.decode(
+            data.routes[0].overview_polyline.points,
         );
-
-        return coordinates;
+        return decodedPoints.map(point => ({
+            latitude: point[0],
+            longitude: point[1],
+        }));
     } catch (error) {
-        console.log(
-            'GOOGLE ROUTE ERROR => ',
-            error,
-        );
-
+        if (error.name === 'AbortError') {
+            console.log('GOOGLE DIRECTIONS TIMEOUT');
+        } else {
+            console.log('GOOGLE DIRECTIONS ERROR =>', error.message);
+        }
         return [];
     }
 };

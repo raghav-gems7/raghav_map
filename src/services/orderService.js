@@ -14,14 +14,19 @@ export const getDeliveryOrders = async () => {
     }
 };
 
-export const getCustomerOrders = async () => {
+export const getCustomerOrders = async customerId => {
     try {
-        const { data, error } = await supabase
+        let query = supabase
             .from('orders')
             .select('*')
             .eq('status', 'out_for_delivery')
             .order('created_at', { ascending: false });
 
+        if (customerId) {
+            query = query.eq('dairy_customer_id', customerId);
+        }
+
+        const { data, error } = await query;
         return { data, error };
     } catch (error) {
         return { data: [], error };

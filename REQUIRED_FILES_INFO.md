@@ -15,6 +15,8 @@ the map to match. Nobody's phone talks directly to another phone — the
 database is the middleman both sides check in with.
 
 ---
+Full Feature Flow: MAP_FEATURE_FLOW.md
+---
 
 ## 1. The delivery boy's phone sends its location
 

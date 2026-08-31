@@ -1,3 +1,6 @@
+// The map screen the customer sees, showing the delivery boy's bike icon
+// gliding smoothly across the map. This file can also draw a road-path line
+// behind the bike, but that part isn't turned on yet — see MAP_FEATURE_FLOW.md.
 import React from 'react';
 import { Image, View, StyleSheet } from 'react-native';
 import MapView, { Marker, Polyline } from 'react-native-maps';
@@ -11,8 +14,8 @@ const TrackingMap = ({
     destination,
     setMapReady,
 }) => {
-    // Slice remaining route from the last completed point onward.
-    // Guard against empty completedPath to avoid negative index.
+    // Splits the road-path line into the part already covered (green) and the
+    // part still ahead (grey), based on how far the delivery boy has gone.
     const sliceFrom = completedPath.length > 1 ? completedPath.length - 1 : 0;
     const remainingRoute = fullRouteCoordinates.slice(sliceFrom);
 
@@ -58,7 +61,8 @@ const TrackingMap = ({
                 </Marker>
             )}
 
-            {/* Animated delivery boy marker */}
+            {/* The delivery boy's bike icon — glides smoothly to his newest known
+                location instead of jumping straight there */}
             <Marker.Animated
                 coordinate={animatedCoordinate}
                 flat

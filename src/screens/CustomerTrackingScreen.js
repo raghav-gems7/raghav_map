@@ -63,6 +63,8 @@ const CustomerTrackingScreen = ({ route }) => {
         }
     };
 
+    // Runs every 5 seconds. Checks the database for the delivery boy's newest
+    // location, then smoothly slides the bike icon over to that spot.
     const fetchLocation = async () => {
         try {
             const { data, error: fetchError } =
@@ -129,6 +131,7 @@ const CustomerTrackingScreen = ({ route }) => {
             <TrackingMap
                 mapRef={mapRef}
                 animatedCoordinate={animatedCoordinate}
+                // Road-path line feature isn't turned on yet — see MAP_FEATURE_FLOW.md
                 completedPath={[]}
                 fullRouteCoordinates={[]}
                 destination={{

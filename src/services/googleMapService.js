@@ -1,3 +1,6 @@
+// Same idea as routeService.js (gets the road path between two points) but
+// using Google Maps instead of the free service. Also not in use yet — we'd
+// pick one of these two when we turn the road-line feature on.
 import polyline from '@mapbox/polyline';
 import Config from 'react-native-config';
 

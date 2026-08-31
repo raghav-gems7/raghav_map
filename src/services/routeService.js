@@ -1,3 +1,6 @@
+// Asks a free map service for the actual road path between two points (not
+// just a straight line) so we could draw a route line on the map. Built and
+// ready, but no screen is using it yet — see MAP_FEATURE_FLOW.md.
 import polyline from '@mapbox/polyline';
 import { OSRM_BASE_URL } from '../utils/constants';
 

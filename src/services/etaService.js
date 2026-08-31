@@ -1,3 +1,6 @@
+// Guesses how many minutes away the delivery boy is, using straight-line
+// distance (like a ruler on the map, not actual roads) and an assumed average
+// speed. This will get more accurate once the road-path feature is turned on.
 import { calculateDistance } from '../utils/distance';
 import { AVG_DELIVERY_SPEED_KMH } from '../utils/constants';
 

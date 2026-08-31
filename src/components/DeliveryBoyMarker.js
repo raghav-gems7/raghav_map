@@ -3,6 +3,9 @@ import { View, Text, Image, StyleSheet } from 'react-native';
 import { Marker } from 'react-native-maps';
 import { STALE_LOCATION_THRESHOLD_MS } from '../utils/constants';
 
+// The delivery boy's icon on the owner's map. Unlike the customer's screen,
+// this icon jumps straight to the new spot instead of gliding smoothly —
+// just a small visual difference, not a functional one.
 const DeliveryBoyMarker = ({ rider, animatedCoordinate, onPress }) => {
     const isStale =
         rider.last_seen_at &&

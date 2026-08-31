@@ -1,3 +1,6 @@
+// Works out the straight-line distance (in meters) between two map points,
+// like measuring with a ruler on the map. Used to check "has he moved far
+// enough to update?" and to estimate how far away the delivery boy is.
 export const calculateDistance = (
     lat1,
     lon1,

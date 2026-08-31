@@ -11,6 +11,7 @@ import {
     Platform,
     PermissionsAndroid,
     Alert,
+    AppState,
 } from 'react-native';
 import {
     fetchSessionDeliveries,
@@ -22,6 +23,7 @@ import {
     startBackgroundTracking,
     stopBackgroundTracking,
     isBackgroundTrackingRunning,
+    getLastKnownLocation,
 } from '../services/backgroundLocationTask';
 
 const DeliveryHomeScreen = ({ route, navigation }) => {
@@ -39,6 +41,23 @@ const DeliveryHomeScreen = ({ route, navigation }) => {
 
     useEffect(() => {
         setIsOnline(isBackgroundTrackingRunning());
+    }, []);
+
+    // Track app foreground/background/inactive transitions to correlate with location fetch logs
+    useEffect(() => {
+        const { lat, lng } = getLastKnownLocation();
+        console.log(
+            `[LOC][APPSTATE] initial=${AppState.currentState} at=${new Date().toISOString()} ` +
+            `lastLat=${lat} lastLng=${lng}`,
+        );
+        const subscription = AppState.addEventListener('change', nextState => {
+            const { lat: curLat, lng: curLng } = getLastKnownLocation();
+            console.log(
+                `[LOC][APPSTATE] changed to=${nextState} at=${new Date().toISOString()} ` +
+                `lastLat=${curLat} lastLng=${curLng}`,
+            );
+        });
+        return () => subscription.remove();
     }, []);
 
     // Reload list every time screen comes into focus — covers return from DeliveryMapScreen

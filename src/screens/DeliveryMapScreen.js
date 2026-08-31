@@ -71,12 +71,25 @@ const DeliveryMapScreen = ({ route }) => {
 
     // Get rider's current position once on mount to show the blue dot
     useEffect(() => {
+        const requestedAt = Date.now();
+        console.log(`[LOC][FG] getCurrentPosition requested at=${new Date(requestedAt).toISOString()}`);
         Geolocation.getCurrentPosition(
-            pos => setRiderCoord({
-                latitude: pos.coords.latitude,
-                longitude: pos.coords.longitude,
-            }),
-            () => {},
+            pos => {
+                console.log(
+                    `[LOC][FG] getCurrentPosition OK at=${new Date().toISOString()} ` +
+                    `latency=${Date.now() - requestedAt}ms lat=${pos.coords.latitude} lng=${pos.coords.longitude}`,
+                );
+                setRiderCoord({
+                    latitude: pos.coords.latitude,
+                    longitude: pos.coords.longitude,
+                });
+            },
+            err => {
+                console.log(
+                    `[LOC][FG] getCurrentPosition FAILED at=${new Date().toISOString()} ` +
+                    `latency=${Date.now() - requestedAt}ms error=${err?.message || err}`,
+                );
+            },
             { enableHighAccuracy: true, timeout: 10000, maximumAge: 5000 },
         );
     }, []);

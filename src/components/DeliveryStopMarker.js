@@ -8,6 +8,9 @@ const STATUS_BG = {
     skipped: '#E53935',
 };
 
+// One pin per customer on the delivery boy's map. The number shows delivery
+// order; the color shows status (black = pending, green = delivered, red =
+// skipped); delivered pins fade out so it's easy to see what's left.
 const DeliveryStopMarker = ({ delivery, onPress }) => {
     const customer = delivery.dairy_customers;
     const status = delivery.status || 'pending';

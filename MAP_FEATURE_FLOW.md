@@ -1,91 +1,130 @@
-# Live Delivery Tracking — How It Works (Simple Explanation)
+# Live Delivery Tracking — Full Flow
 
-This explains, in plain terms, how the delivery boy's location shows up as a
-moving bike icon on the customer's and owner's map — file by file, no
-technical background needed.
+### Demo Quick Summary + Production Plan
 
----
+## Delivery Boy Live Tracking — Feature Flow
 
-## The basic idea
+### 1. Delivery Boy Goes Online
 
-The delivery boy's phone keeps sending its location to our online database
-(Supabase) every few seconds. The customer's phone and the owner's phone
-keep checking that same database every few seconds and move a bike icon on
-the map to match. Nobody's phone talks directly to another phone — the
-database is the middleman both sides check in with.
+* Delivery Boy opens the app and goes **Online**.
+* Location tracking starts while the Delivery Boy is active.
+* Location is checked every **10 seconds**.
 
----
+### 2. Location Update
 
-## 1. The delivery boy's phone sends its location
+* Every 10 seconds, the app gets the Delivery Boy's current location.
+* The current location is compared with the last location sent to the backend.
+* If the Delivery Boy has moved **10 meters or more**, the new location is sent to the backend.
+* If the movement is less than 10 meters, no backend update is sent.
+* The first valid location is always sent.
 
-**File:** `src/services/backgroundLocationTask.js`
-**File:** `src/utils/distance.js` [here we have logic of 10+ meters displacement]
+### 3. Recent Location History
 
-- While the delivery boy is "Online", this file checks his phone's GPS
-  every **20 seconds**.
-- **But it doesn't send an update every single time.** It first checks: "did
-  he actually move at least 10 meters since the last update?" If he's
-  standing still (parked, inside a house delivering), it skips sending
-  anything — no point updating the map if he hasn't moved.
-- If he *has* moved 10+ meters, it saves his new location to the database.
-- The "how far did he move" math lives in `src/utils/distance.js`.
+* The system keeps the **last 20 successfully updated locations** of the Delivery Boy.
+* These locations are used to show the **recent path already travelled** by the Delivery Boy.
+* Only the latest 20 points are retained.
 
-## 2. The customer's map — the moving bike icon
+### 4. Delivery Boy Starts Delivery
 
-**Files:** `src/screens/CustomerTrackingScreen.js` and
-`src/components/TrackingMap.js`
+* Delivery Boy selects a customer from the regular delivery list.
+* The system records which customer the Delivery Boy is currently delivering to.
+* The Dairy Owner and eligible Customer can see the Delivery Boy's current location.
 
-- The customer's app checks the database every **5 seconds** for the
-  delivery boy's latest location.
-- Instead of the bike icon jumping instantly to the new spot, it **glides**
-  smoothly there over about 4 seconds — this is what makes it look like
-  natural movement instead of teleporting.
-- The customer's own home is shown as a house icon on the map (this one
-  doesn't move).
+### 5. Dairy Owner Tracking
 
-## 3. The road-path line — built, but not turned on yet
+Dairy Owner can open the **Live Tracking Map**.
 
-- We have the code ready to draw an actual line on the map tracing the road
-  the delivery boy is driving on (like a route line in Google Maps).
-- Right now, that line **is not showing** — only the bike icon moves, with
-  no line behind it. The building blocks for it already exist
-  (`src/services/routeService.js` and `src/services/googleMapService.js`),
-  they just haven't been connected to the map screen yet.
-- This is a small, well-understood next step, not something we'd be
-  starting from scratch.
+The map shows all Delivery Boys belonging to that dairy business.
 
+For each Delivery Boy, the Owner can see:
 
-## 4. Delivery boy's own map — "Mark Delivery by Maps"
+* Current location
+* Delivery status
+* Current customer/delivery
 
-**File:** `src/screens/DeliveryMapScreen.js`
+When the Owner selects a specific Delivery Boy, the **last 20 location points** can be displayed as a polyline to show the path already travelled.
 
-- Shows all his pending customers as numbered pins on a map (numbered by
-  delivery order).
-- Tapping a pin gives two buttons: **Get Directions** (opens Google Maps
-  app to that address, same as our current flow) and **Mark as Delivered**
-  (marks that stop done right there on the map).
-- Delivered pins turn green and fade out, so it's easy to see what's left.
+### 6. Customer Tracking
 
-## 6. Dairy owner's map — sees everyone at once
+Customer can track the Delivery Boy assigned to their active delivery/shift.
 
-**File:** `src/screens/DairyOwnerMapScreen.js`
+Customer can see:
 
-- Shows every delivery boy and every customer on one map, refreshed every
-  5 seconds.
-- Delivery boy icons here **jump** to the new spot rather than gliding
-  smoothly (unlike the customer's screen) — a small visual difference, not
-  a functional one.
-- If a delivery boy's location hasn't updated in the last 30 seconds, his
-  icon turns grey and shows "Offline" — a simple way to flag if his phone
-  or app has stopped sending updates.
+* Delivery Boy's current location
+* Delivery status
+* Recent travelled path
+
+If two Delivery Boys are assigned to the same customer/shift, both can be shown.
+
+### 7. Future Route
+
+* The system will **not predict or display the future route** of the Delivery Boy.
+* The polyline will only represent the **actual path already travelled** based on recorded locations.
+* No navigation or suggested route will be shown.
+
+### 8. Delivery Completion / Offline
+
+* After completing the delivery, the Delivery Boy moves to the next delivery.
+* When the Delivery Boy goes **Offline**, location tracking stops and live location is no longer treated as active.
 
 ---
 
-## Quick summary
 
-| Who sees it | What moves | Smooth or jumpy? | Road-line shown? | How often it updates |
-|---|---|---|---|---|
-| Customer | Delivery boy's bike icon | Smooth glide | Not yet (built, not connected) | Every 5 seconds |
-| Delivery boy | His own pending stops (pins) | Pins don't move (only customers listed) | — | On open / after each action |
-| Dairy owner | All delivery boys + all customers | Jumps to new spot | Not yet | Every 5 seconds |
-| Delivery boy → database | His live location | — | — | Every 20 seconds, only if moved 10+ meters |
+# Production Plan
+
+### SimpleDairyCustomer + Companion Apps
+
+This is the plan for taking the proven demo approach and building it for real, based on the actual production repo (`SimpleDairyCustomer`) — not Supabase, but a Rails REST API with axios + Redux.
+
+## 1. Final End-to-End Flow
+
+**Delivery Boy's phone** → checks GPS every **10s** → if moved **≥10m** (or it's the very first reading) → sends it to our Rails backend → backend saves the current location and keeps a rolling history of the last 20 points → Dairy Owner's app and Customer's app each check the backend every **5s** and draw the current position + a line of the last 20 points for whichever Delivery Boys they're allowed to see.
+
+Same overall shape as the Demo (phone → shared backend → other phones poll it), just built on this app's real stack (Rails API + axios + Redux) instead of Supabase.
+
+## 2. Online/Offline Recommendation
+
+Keep the same **explicit toggle** the Demo uses (Online/Offline switch), not "always tracking in the background."
+
+Reasons:
+
+* There's no always-on realtime connection in this app today — polling only makes sense while a shift is actually active, otherwise it wastes battery/data for nothing.
+* Going Online should create a "shift started" record on the backend; going Offline should end it and stop sending updates — same idea as the Demo's delivery session start/stop.
+
+## 3. 10-Second + 10-Meter Location Strategy
+
+Same idea as the Demo, with two changes per the requirements:
+
+* Check GPS every **10 seconds** (Demo uses 20).
+* Only send if moved **10+ meters** since the last update that the backend actually confirmed it received (not just the last one attempted) — so a failed send doesn't quietly get "forgotten."
+* **Always send the very first location reading immediately**, even if the 10m rule hasn't been checked yet — this is just about "how often to bother sending," never used to detect arrival at a customer's door.
+
+## 4. Last-20-Points / Polyline Strategy
+
+* The backend keeps the history, not the phone. Every time a new location comes in, the backend adds it and drops anything older than the last 20.
+* The Owner's and Customer's apps simply ask **"give me the current position and last 20 points"** each time they check in — they don't try to build up the trail themselves from repeated polls (that would break if the app restarts or a poll gets missed).
+* The line drawn on the map is always **only where the Delivery Boy has already been** — never a guess at where he's going next.
+
+## 5. Delivery Boy / Owner / Customer Flows
+
+### Delivery Boy
+
+*(App not in this repo yet — flagged below)*
+
+**Online toggle** → sends location every 10s per §4 → same "list of stops + Mark Delivery by Maps" screen idea from the Demo, just pointed at our real backend instead of Supabase.
+
+### Dairy Owner
+
+Sees all their Delivery Boys with:
+
+* Current location
+* Status
+* Current customer/delivery
+
+Tapping one shows their **last 20 points as a line on the map**.
+
+### Customer
+
+Sees only the Delivery Boy(s) assigned to their current order — if two are assigned, shows both.
+
+Same **current-position + last-20 line**, never a predicted future path.
